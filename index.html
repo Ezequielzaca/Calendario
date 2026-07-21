@@ -138,6 +138,9 @@
   .filtro-btn.active{background:var(--ink); color:#fff; border-color:var(--ink);}
   .filtro-btn:hover:not(.active){border-color:var(--ink-soft); color:var(--ink);}
 
+  .filtro-bar.categoria{margin:10px 0 -6px;}
+  .filtro-btn.cat.active{background:var(--ledger-green); border-color:var(--ledger-green);}
+
   section.block{margin-top:34px;}
   .block-title{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;}
   .block-title h2{font-family:'Poppins', sans-serif; font-size:1.1rem; font-weight:600; margin:0; color:var(--ink);}
@@ -286,6 +289,13 @@
     <button class="filtro-btn active" data-filtro="todos">Todos</button>
     <button class="filtro-btn" data-filtro="pendientes">Pendientes</button>
     <button class="filtro-btn" data-filtro="pagados">Pagados</button>
+  </div>
+
+  <div class="filtro-bar categoria">
+    <button class="filtro-btn cat active" data-categoria="todas">Todas las categorías</button>
+    <button class="filtro-btn cat" data-categoria="ISP">ISP</button>
+    <button class="filtro-btn cat" data-categoria="Conectividad">Conectividad</button>
+    <button class="filtro-btn cat" data-categoria="Otro">Otro</button>
   </div>
 
   <section class="block">
@@ -479,6 +489,7 @@ let data = { recurrentes: [], meses: {} };
 let current = new Date();
 current.setDate(1);
 let filtroEstado = 'todos';
+let filtroCategoria = 'todas';
 let editingRecurrenteId = null;
 let editingPuntualId = null;
 
@@ -647,6 +658,7 @@ function render(){
   listR.innerHTML = '';
   let recurrentesVisibles = data.recurrentes.filter(r=>{
     const est = mes.estadosRecurrentes[r.id] || {};
+    if(filtroCategoria!=='todas' && r.categoria!==filtroCategoria) return false;
     if(filtroEstado==='pagados') return !!est.pagado;
     if(filtroEstado==='pendientes') return !est.pagado;
     return true;
@@ -691,6 +703,7 @@ function render(){
   const listP = document.getElementById('listaPuntuales');
   listP.innerHTML = '';
   let puntualesVisibles = mes.puntuales.filter(p=>{
+    if(filtroCategoria!=='todas' && p.categoria!==filtroCategoria) return false;
     if(filtroEstado==='pagados') return !!p.pagado;
     if(filtroEstado==='pendientes') return !p.pagado;
     return true;
@@ -834,11 +847,20 @@ function bindEvents(mes){
 document.getElementById('prevMonth').addEventListener('click', ()=>{ current.setMonth(current.getMonth()-1); render(); });
 document.getElementById('nextMonth').addEventListener('click', ()=>{ current.setMonth(current.getMonth()+1); render(); });
 
-document.querySelectorAll('.filtro-btn').forEach(btn=>{
+document.querySelectorAll('.filtro-bar:not(.categoria) .filtro-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
-    document.querySelectorAll('.filtro-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.filtro-bar:not(.categoria) .filtro-btn').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     filtroEstado = btn.dataset.filtro;
+    render();
+  });
+});
+
+document.querySelectorAll('.filtro-btn.cat').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.filtro-btn.cat').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    filtroCategoria = btn.dataset.categoria;
     render();
   });
 });
