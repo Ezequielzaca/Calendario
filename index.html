@@ -408,6 +408,9 @@ function toggleMenu(force){
   document.getElementById("scrim").classList.toggle("on", abrir);
 }
 
+/* ============ Localidades de Corrientes ============ */
+const LOCALIDADES_CORRIENTES = ["Corrientes (Capital)","Alvear","Bella Vista","Berón de Astrada","Bonpland","Caá Catí","Cazadores Correntinos","Chavarría","Colonia Carlos Pellegrini","Colonia Libertad","Colonia Liebig","Concepción del Yaguareté Corá","Cruz de los Milagros","Curuzú Cuatiá","Empedrado","Esquina","Felipe Yofré","Garruchos","Gobernador Juan E. Martínez","Gobernador Virasoro","Goya","Guaviraví","Herlitzka","Itá Ibaté","Itatí","Ituzaingó","José Rafael Gómez (Garaví)","Juan Pujol","La Cruz","Lavalle","Lomas de Vallejos","Loreto","Mantilla (Pedro R. Fernández)","Mariano I. Loza","Mburucuyá","Mercedes","Mocoretá","Monte Caseros","Nueve de Julio","Palmar Grande","Parada Pucheta","Paso de la Patria","Paso de los Libres","Perugorría","Pueblo Libertador","Ramada Paso","Riachuelo","Saladas","San Antonio de Apipé","San Carlos","San Cosme","San Lorenzo","San Luis del Palmar","San Miguel","San Roque","Santa Ana de los Guácaras","Santa Lucía","Santa Rosa","Santo Tomé","Sauce","Tabay","Tapebicuá","Tatacuá","Tres de Abril","Villa Olivari","Yapeyú","Yataytí Calle"];
+
 /* ============ Definición de formularios ============ */
 const FORM_DEFS = {
   rodados: [
@@ -445,7 +448,7 @@ const FORM_DEFS = {
     {id:"fecha", label:"Fecha desde *", type:"date"},
     {id:"fechaHasta", label:"Fecha hasta", type:"date"},
     {id:"sector", label:"Sector", type:"select", opts:()=>[["Gerencia","Gerencia"],["Telecomunicaciones","Telecomunicaciones"],["Administración","Administración"],["Comercial","Comercial"],["Desarrollo","Desarrollo"]]},
-    {id:"destino", label:"Destino / Alojamiento", type:"text", ph:"Ej: Hotel Guaraní, Posadas"},
+    {id:"destino", label:"Destino (localidad)", type:"text", list:()=>LOCALIDADES_CORRIENTES, ph:"Escribí para buscar…", hint:"Localidades de Corrientes; también podés escribir otro destino u hotel."},
     {id:"personas", label:"Personas que viajaron", type:"text", full:true, ph:"Ej: J. Pérez, M. Gómez"},
     {id:"motivo", label:"Motivo del viaje", type:"textarea", full:true, ph:"Ej: Instalación de enlace en delegación…"},
     {id:"costo", label:"Costo (ARS)", type:"number", ph:"Ej: 120000"},
@@ -477,7 +480,8 @@ function abrirModal(mod, reg, extra){
     }else if(f.type==="textarea"){
       h += '<textarea id="fm_'+f.id+'" placeholder="'+esc(f.ph||"")+'"></textarea>';
     }else{
-      h += '<input type="'+f.type+'" id="fm_'+f.id+'" placeholder="'+esc(f.ph||"")+'">';
+      h += '<input type="'+f.type+'" id="fm_'+f.id+'"'+(f.list?' list="dl_'+f.id+'" autocomplete="off"':'')+' placeholder="'+esc(f.ph||"")+'">';
+      if(f.list) h += '<datalist id="dl_'+f.id+'">'+f.list().map(o=>'<option value="'+esc(o)+'"></option>').join("")+'</datalist>';
     }
     if(f.hint) h += '<div class="hint">'+esc(f.hint)+'</div>';
     h += '</div>';
