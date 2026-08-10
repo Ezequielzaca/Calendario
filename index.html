@@ -883,9 +883,31 @@ function importarJSON(ev){
     try{
       const d = JSON.parse(rd.result);
       if(!d || !Array.isArray(d.vehiculos)) throw new Error("formato");
-      for(const k of ["registros","remises","refrigerios","alojamientos","tareas"]) if(!Array.isArray(d[k])) d[k] = [];
-      db = d; persistir(); modulo = "rodados"; vistaActual = "resumen"; render();
-      toast("✓ Respaldo restaurado");
+      const COLS = ["registros","remises","refrigerios","alojamientos","tareas"];
+      for(const k of COLS) if(!Array.isArray(d[k])) d[k] = [];
+      const combinar = confirm("¿COMBINAR el respaldo con los datos actuales?\n\nAceptar = combinar (agrega lo nuevo, NO borra nada de lo que ya tenés)\nCancelar = reemplazo total");
+      if(combinar){
+        let agregados = 0;
+        for(const v of d.vehiculos){
+          const cur = db.vehiculos.find(x=>x.id===v.id);
+          if(!cur){ db.vehiculos.push(v); }
+          else{
+            if(!cur.kmActual && v.kmActual) cur.kmActual = v.kmActual;
+            if(!cur.proxServiceKm && v.proxServiceKm) cur.proxServiceKm = v.proxServiceKm;
+          }
+        }
+        for(const k of COLS){
+          for(const r of d[k]){
+            if(r && r.id && !db[k].find(x=>x.id===r.id)){ db[k].push(r); agregados++; }
+          }
+        }
+        persistir(); modulo = "rodados"; vistaActual = "resumen"; render();
+        toast("✓ Respaldo combinado: "+agregados+" registros agregados, nada se borró");
+      }else{
+        if(!confirm("⚠ ATENCIÓN: esto REEMPLAZA todos los datos actuales por los del respaldo.\n¿Seguro que querés continuar?")) return;
+        db = d; persistir(); modulo = "rodados"; vistaActual = "resumen"; render();
+        toast("✓ Respaldo restaurado (reemplazo total)");
+      }
     }catch(e){ toast("⚠ El archivo no es un respaldo válido"); }
   };
   rd.readAsText(file);
