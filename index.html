@@ -206,11 +206,14 @@ tbody tr:hover{background:rgba(0,176,234,.05)}
     <button class="side-item" data-mod="alojamiento" onclick="irModulo('alojamiento')">
       <span class="ico">🏨</span><span>Alojamiento<small>Viajes y estadías</small></span>
     </button>
+    <button class="side-item" data-mod="solicitudes" onclick="irModulo('solicitudes')">
+      <span class="ico">📋</span><span>Solicitudes<small>Compras · sheet en vivo</small></span>
+    </button>
     <button class="side-item" data-mod="tareas" onclick="irModulo('tareas')">
       <span class="ico">✅</span><span>Tareas<small>Agenda y seguimiento</small></span>
       <span class="badge" id="badgeTareas" style="display:none"></span>
     </button>
-    <div class="side-foot">Dr. R. Carrillo 444 - IOSCor - 5° Piso<br>0810-555-8352 · info@telco.com.ar</div>
+    <div class="side-foot"><div id="syncEstado" style="margin-bottom:6px;font-weight:700">☁ Conectando…</div>Dr. R. Carrillo 444 - IOSCor - 5° Piso<br>0810-555-8352 · info@telco.com.ar</div>
   </aside>
 
   <div class="content">
@@ -347,6 +350,75 @@ function cargar(){
 function persistir(){
   try{ localStorage.setItem(LS_KEY, JSON.stringify(db)); }
   catch(e){ toast("⚠ No se pudo guardar en el navegador"); }
+  nubeGuardar();
+}
+
+/* ============ Sincronización en la nube (Firebase RTDB) ============ */
+const FB_URL = "https://calendariotelk-default-rtdb.firebaseio.com/gestionBienes.json";
+let nubeTimer = null;
+let nubeLista = false;   // recién después de la carga inicial se permite subir
+
+function setNube(estado, detalle){
+  const el = document.getElementById("syncEstado");
+  if(!el) return;
+  const m = {ok:"☁ Sincronizado", guardando:"☁ Guardando…", error:"⚠ Sin conexión (datos locales)", off:"☁ Conectando…"};
+  el.textContent = m[estado] || "";
+  el.title = detalle || "";
+  el.style.color = estado==="error" ? "#d64545" : "";
+}
+function normalizarDb(d){
+  if(!d || typeof d !== "object") return null;
+  if(!Array.isArray(d.vehiculos)) return null;
+  for(const k of ["registros","remises","refrigerios","alojamientos","tareas"]) if(!Array.isArray(d[k])) d[k] = [];
+  return d;
+}
+function combinarDb(base, extra){
+  for(const v of (extra.vehiculos||[])){
+    const cur = base.vehiculos.find(x=>x.id===v.id);
+    if(!cur) base.vehiculos.push(v);
+    else{
+      if(!cur.kmActual && v.kmActual) cur.kmActual = v.kmActual;
+      if(!cur.proxServiceKm && v.proxServiceKm) cur.proxServiceKm = v.proxServiceKm;
+    }
+  }
+  for(const k of ["registros","remises","refrigerios","alojamientos","tareas"]){
+    for(const r of (extra[k]||[])){
+      if(r && r.id && !base[k].find(x=>x.id===r.id)) base[k].push(r);
+    }
+  }
+  return base;
+}
+function nubeGuardar(){
+  if(!nubeLista) return;
+  clearTimeout(nubeTimer);
+  setNube("guardando");
+  nubeTimer = setTimeout(async () => {
+    try{
+      const res = await fetch(FB_URL, {method:"PUT", body: JSON.stringify(db)});
+      if(!res.ok) throw new Error("HTTP "+res.status);
+      setNube("ok");
+    }catch(e){ setNube("error", String(e)); }
+  }, 700);
+}
+async function nubeCargar(){
+  setNube("off");
+  try{
+    const res = await fetch(FB_URL);
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const remoto = normalizarDb(await res.json());
+    if(remoto){
+      db = combinarDb(remoto, db);   // manda la nube; lo local que falte se suma, nada se borra
+      try{ localStorage.setItem(LS_KEY, JSON.stringify(db)); }catch(e){}
+    }
+    nubeLista = true;
+    const res2 = await fetch(FB_URL, {method:"PUT", body: JSON.stringify(db)});
+    if(!res2.ok) throw new Error("HTTP "+res2.status);
+    setNube("ok");
+    render();
+  }catch(e){
+    nubeLista = true;   // permite reintentar en el próximo guardado
+    setNube("error", String(e));
+  }
 }
 
 /* ============ Utilidades ============ */
@@ -365,7 +437,8 @@ function chipTipo(t){
   const cls = {"Service":"chip-service","Reparación":"chip-reparacion","Repuestos":"chip-repuesto","Otro":"chip-otro",
                "Frutas":"chip-repuesto","Yogures":"chip-service","Mixto":"chip-reparacion",
                "Alta":"chip-alerta","Media":"chip-warn","Baja":"chip-ok",
-               "Gerencia":"chip-otro","Telecomunicaciones":"chip-service","Administración":"chip-repuesto","Comercial":"chip-reparacion","Desarrollo":"chip-ok"}[t] || "chip-otro";
+               "Gerencia":"chip-otro","Telecomunicaciones":"chip-service","Administración":"chip-repuesto","Comercial":"chip-reparacion","Desarrollo":"chip-ok",
+               "EN CURSO":"chip-warn","GESTIONAR":"chip-alerta","FINALIZADA":"chip-ok","RESERVADA":"chip-otro"}[t] || "chip-otro";
   return '<span class="chip '+cls+'">'+esc(t)+'</span>';
 }
 function toast(msg){
@@ -392,6 +465,7 @@ const MODULOS = {
   remises:     {titulo:'<span>Remises</span> y traslados',   coleccion:"remises"},
   refrigerios: {titulo:'<span>Refrigerios</span> · frutas y yogures', coleccion:"refrigerios"},
   alojamiento: {titulo:'<span>Alojamiento</span> · viajes y estadías', coleccion:"alojamientos"},
+  solicitudes: {titulo:'<span>Solicitudes</span> de compra', coleccion:null},
   tareas:      {titulo:'Agenda de <span>Tareas</span>',      coleccion:"tareas"}
 };
 function irModulo(m){
@@ -466,7 +540,7 @@ const FORM_DEFS = {
 };
 
 /* ============ Modal genérico ============ */
-function nuevoActual(){ abrirModal(modulo, null); }
+function nuevoActual(){ if(modulo==="solicitudes"){ toast("Las solicitudes se cargan en el Google Sheet"); return; } abrirModal(modulo, null); }
 function abrirModal(mod, reg, extra){
   editandoCol = mod;
   editandoId = reg ? reg.id : null;
@@ -779,6 +853,221 @@ function renderAlojamiento(){
   return h;
 }
 
+/* ============ SOLICITUDES DE COMPRA (Google Sheet en vivo) ============ */
+const SHEET_ID = "1aC8BYwxPdaOUY7xhc711M6nqdYLpJyb5u3kspgGNsSY";
+const SHEET_GID = "1846187867";
+const SHEET_LINK = "https://docs.google.com/spreadsheets/d/"+SHEET_ID+"/edit#gid="+SHEET_GID;
+let solData = null, solCargando = false, solError = null, solFiltro = "Abiertas";
+let solDetalles = {}, solExpandidas = {};
+
+function gvizUrl(opts){
+  let u = "https://docs.google.com/spreadsheets/d/"+SHEET_ID+"/gviz/tq?tqx=out:json&headers=0";
+  if(opts.gid) u += "&gid="+encodeURIComponent(opts.gid);
+  if(opts.sheet) u += "&sheet="+encodeURIComponent(opts.sheet);
+  return u;
+}
+async function gvizFetch(opts){
+  const res = await fetch(gvizUrl(opts));
+  if(!res.ok) throw new Error("HTTP "+res.status);
+  const txt = await res.text();
+  const a = txt.indexOf("("), b = txt.lastIndexOf(")");
+  if(a<0 || b<0 || b<=a) throw new Error("Respuesta inesperada de Google (¿la hoja está compartida por enlace?)");
+  const data = JSON.parse(txt.slice(a+1,b));
+  if(data.status==="error") throw new Error((data.errors && data.errors[0] && data.errors[0].detailed_message) || "Error de Google Sheets");
+  return (data.table.rows||[]).map(r => (r.c||[]).map(c => c ? {v:c.v, f:(c.f!=null ? String(c.f) : (c.v!=null ? String(c.v) : ""))} : {v:null, f:""}));
+}
+const celdaS = (fila,i) => (i>=0 && fila && fila[i]) ? fila[i].f.trim() : "";
+function numeroS(x){
+  if(x==null || x==="") return 0;
+  if(typeof x === "number") return x;
+  const n = parseFloat(String(x).replace(/[^0-9.,-]/g,"").replace(/\./g,"").replace(",","."));
+  return isNaN(n) ? 0 : n;
+}
+const numCelda = (fila,i) => (i>=0 && fila && fila[i] && typeof fila[i].v==="number") ? fila[i].v : numeroS(celdaS(fila,i));
+
+function parsearPrincipal(filas){
+  let hi=-1; const cols={};
+  for(let i=0;i<filas.length;i++){
+    const up = filas[i].map(c=>c.f.trim().toUpperCase());
+    if(up.includes("ESTADO") && up.includes("DESCRIPCIÓN")){
+      hi=i; up.forEach((t,j)=>{ if(t && cols[t]==null) cols[t]=j; });
+      break;
+    }
+  }
+  if(hi<0) throw new Error("No encontré los encabezados (N° de cotización / Estado / Descripción) en la pestaña vinculada del sheet");
+  const ix = n => (cols[n]!=null ? cols[n] : -1);
+  const out=[];
+  for(let i=hi+1;i<filas.length;i++){
+    const f=filas[i];
+    const nroTxt = celdaS(f, ix("N° DE COTIZACIÓN"));
+    if(!nroTxt || isNaN(parseInt(nroTxt))) continue;
+    out.push({
+      nro: parseInt(nroTxt),
+      fecha: celdaS(f, ix("FECHA RECEPCIÓN DE SC")),
+      area: celdaS(f, ix("ÁREA QUE SOLICITA")),
+      desc: celdaS(f, ix("DESCRIPCIÓN")),
+      estado: celdaS(f, ix("ESTADO")).toUpperCase(),
+      tango: celdaS(f, ix("N° SOLICITUD DE COMPRA - TANGO")),
+      pendiente: numCelda(f, ix("MONTO PENDIENTE DE COMPRA")),
+      comprado: numCelda(f, ix("MONTO COMPRADO")),
+      obs: celdaS(f, ix("OBSERVACIONES")),
+      dias: celdaS(f, ix("DIAS TRANSCURRIDOS SC"))
+    });
+  }
+  return out;
+}
+
+function parsearDetalle(filas){
+  const det = {items:[], motivo:"", estado:""};
+  let hi=-1, iProd=-1, iSol=-1, iPend=-1, iComp=-1;
+  for(let i=0;i<filas.length;i++){
+    const f=filas[i];
+    for(let j=0;j<f.length;j++){
+      const t=f[j].f.trim();
+      if(t==="Motivo del pedido:" && !det.motivo) det.motivo = celdaS(f,j+1) || celdaS(f,j+2);
+      if(t==="Estado:" && !det.estado) det.estado = (celdaS(f,j+1) || celdaS(f,j+2)).toUpperCase();
+    }
+    const up = f.map(c=>c.f.trim().toUpperCase());
+    if(up.includes("PRODUCTO") && up.includes("CANTIDAD SOLICITADA")){
+      hi=i;
+      iProd = up.indexOf("PRODUCTO");
+      iSol  = up.indexOf("CANTIDAD SOLICITADA");
+      iComp = up.indexOf("CANTIDAD COMPRADA");
+      iPend = up.indexOf("CANTIDAD PENDIENTE");
+      break;
+    }
+  }
+  if(hi<0) return det;
+  let vacias = 0;
+  for(let i=hi+1;i<filas.length && i<hi+300;i++){
+    const f=filas[i];
+    const prod = celdaS(f,iProd);
+    if(!prod){ vacias++; if(vacias>3) break; continue; }
+    vacias = 0;
+    const pu = prod.toUpperCase();
+    if(pu==="TOTAL" || pu==="RENGLÓN" || pu==="RENGLON") break;
+    const sol  = numCelda(f,iSol);
+    const comp = numCelda(f,iComp);
+    let pend;
+    const pv = (iPend>=0 && f[iPend]) ? f[iPend].v : null;
+    if(typeof pv === "number") pend = pv;
+    else{
+      const pt = celdaS(f,iPend);
+      pend = /\d/.test(pt) ? numeroS(pt) : (sol - comp);
+    }
+    if(pend < 0) pend = 0;
+    det.items.push({prod, sol, comp, pend});
+  }
+  return det;
+}
+
+async function cargarSolicitudes(){
+  solCargando = true; solError = null; render();
+  try{
+    const filas = await gvizFetch({gid: SHEET_GID});
+    solData = parsearPrincipal(filas);
+  }catch(e){ solError = (e && e.message) ? e.message : String(e); solData = null; }
+  solCargando = false; render();
+}
+function recargarSolicitudes(){ solData = null; solDetalles = {}; solExpandidas = {}; solError = null; cargarSolicitudes(); }
+function setFiltroSol(fx){ solFiltro = fx; render(); }
+
+async function toggleDetalleSol(nro){
+  if(solExpandidas[nro]){ delete solExpandidas[nro]; render(); return; }
+  solExpandidas[nro] = true;
+  if(!solDetalles[nro]){
+    solDetalles[nro] = {cargando:true};
+    render();
+    try{
+      const filas = await gvizFetch({sheet: String(nro)});
+      solDetalles[nro] = parsearDetalle(filas);
+    }catch(e){ solDetalles[nro] = {error: (e && e.message) ? e.message : String(e)}; }
+  }
+  render();
+}
+
+const fmtCant = n => new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(n);
+const solAbierta = s => s.estado==="EN CURSO" || s.estado==="GESTIONAR";
+
+function renderSolicitudes(){
+  const barra = '<div class="section-bar"><div class="filtros">'
+    + ["Abiertas","En curso","Gestionar","Finalizadas","Todas"].map(fx =>
+        '<button class="filtro'+(solFiltro===fx?" active":"")+'" onclick="setFiltroSol(\''+fx+'\')">'+fx+'</button>').join("")
+    + '</div><div style="display:flex;gap:10px;flex-wrap:wrap">'
+    + '<button class="btn btn-ghost" onclick="recargarSolicitudes()">↻ Actualizar</button>'
+    + '<a class="btn btn-ghost" href="'+SHEET_LINK+'" target="_blank">↗ Abrir el Sheet</a>'
+    + '</div></div>';
+
+  if(solCargando && !solData) return barra + '<div class="glass"><div class="empty">Consultando el Google Sheet de solicitudes…</div></div>';
+  if(solError) return barra + '<div class="glass"><div class="empty">⚠ No pude leer el sheet: '+esc(solError)
+    + '<br><br>Verificá que la hoja esté compartida como <b>"Cualquier persona con el enlace → Lector"</b> y que tengas internet, después tocá <b>↻ Actualizar</b>.</div></div>';
+  if(!solData){ setTimeout(cargarSolicitudes, 0); return barra + '<div class="glass"><div class="empty">Cargando…</div></div>'; }
+
+  const abiertas = solData.filter(solAbierta);
+  const enCurso = solData.filter(s=>s.estado==="EN CURSO").length;
+  const gestionar = solData.filter(s=>s.estado==="GESTIONAR").length;
+  const montoPend = abiertas.reduce((a,s)=>a+s.pendiente,0);
+
+  let h = '<div class="kpis">'
+    + '<div class="kpi"><span class="num">'+abiertas.length+'</span><span class="lbl">Solicitudes abiertas</span></div>'
+    + '<div class="kpi"><span class="num">'+enCurso+'</span><span class="lbl">En curso</span></div>'
+    + '<div class="kpi"><span class="num" style="color:'+(gestionar>0?"#d64545":"var(--verde)")+'">'+gestionar+'</span><span class="lbl">A gestionar</span></div>'
+    + '<div class="kpi"><span class="num">'+fmtMoney(montoPend)+'</span><span class="lbl">Monto pendiente de compra</span></div>'
+    + '</div>' + barra;
+
+  let lista = solData;
+  if(solFiltro==="Abiertas") lista = abiertas;
+  else if(solFiltro==="En curso") lista = solData.filter(s=>s.estado==="EN CURSO");
+  else if(solFiltro==="Gestionar") lista = solData.filter(s=>s.estado==="GESTIONAR");
+  else if(solFiltro==="Finalizadas") lista = solData.filter(s=>s.estado==="FINALIZADA");
+  lista = [...lista].sort((a,b)=>b.nro-a.nro);
+
+  h += '<div class="glass tbl-card"><div class="tbl-scroll"><table><thead><tr>'
+    + '<th>N°</th><th>Fecha SC</th><th>Área</th><th>Descripción</th><th>Estado</th><th>Tango</th><th class="right">Pendiente</th><th class="right">Comprado</th><th></th>'
+    + '</tr></thead><tbody>';
+  if(lista.length===0){
+    h += '<tr><td colspan="9"><div class="empty">No hay solicitudes en "'+esc(solFiltro)+'".</div></td></tr>';
+  }else{
+    for(const s of lista){
+      h += '<tr>'
+        + '<td><b>'+s.nro+'</b></td>'
+        + '<td class="nowrap">'+esc(s.fecha||"—")+'</td>'
+        + '<td style="min-width:120px;font-size:.78rem">'+esc(s.area||"—")+'</td>'
+        + '<td style="min-width:200px">'+esc(s.desc||"—")+(s.obs?'<br><span class="muted" style="font-size:.78rem">'+esc(s.obs)+'</span>':'')+'</td>'
+        + '<td>'+chipTipo(s.estado)+'</td>'
+        + '<td>'+esc(s.tango||"—")+'</td>'
+        + '<td class="right money">'+fmtMoney(s.pendiente)+'</td>'
+        + '<td class="right">'+fmtMoney(s.comprado)+'</td>'
+        + '<td class="nowrap"><button class="btn-edit" onclick="toggleDetalleSol('+s.nro+')">'+(solExpandidas[s.nro]?'▾ Ocultar':'▸ Faltantes')+'</button></td>'
+        + '</tr>';
+      if(solExpandidas[s.nro]) h += '<tr><td colspan="9" style="background:rgba(0,176,234,.04);padding:8px 24px 18px">'+renderDetalleSol(s.nro)+'</td></tr>';
+    }
+  }
+  h += '</tbody></table></div></div>';
+  h += '<p class="muted" style="font-size:.75rem;margin:-12px 4px 0">Datos leídos en vivo del sheet "Presupuestos a aprobar". Tocá ▸ Faltantes en una solicitud para ver los artículos que faltan comprar.</p>';
+  return h;
+}
+
+function renderDetalleSol(nro){
+  const d = solDetalles[nro];
+  if(!d || d.cargando) return '<span class="muted">Cargando detalle de la solicitud '+nro+'…</span>';
+  if(d.error) return '<span class="muted">⚠ No pude leer la pestaña "'+nro+'": '+esc(d.error)+'</span>';
+  let h = d.motivo ? '<p style="font-size:.82rem;margin:8px 0"><b>Motivo:</b> '+esc(d.motivo)+'</p>' : '';
+  const pend = d.items.filter(it=>it.pend>0);
+  if(d.items.length===0) return h + '<span class="muted">La pestaña no tiene tabla de artículos.</span>';
+  if(pend.length===0) return h + '<span class="chip chip-ok">✓ Sin faltantes: todos los artículos ('+d.items.length+') ya fueron comprados</span>';
+  h += '<table style="font-size:.8rem"><thead><tr><th>Artículo faltante</th><th class="right">Solicitada</th><th class="right">Comprada</th><th class="right">Falta comprar</th></tr></thead><tbody>';
+  for(const it of pend){
+    h += '<tr><td style="min-width:220px">'+esc(it.prod)+'</td>'
+      + '<td class="right">'+fmtCant(it.sol)+'</td>'
+      + '<td class="right">'+fmtCant(it.comp)+'</td>'
+      + '<td class="right" style="color:#d64545;font-weight:700">'+fmtCant(it.pend)+'</td></tr>';
+  }
+  h += '</tbody></table>';
+  h += '<p class="muted" style="font-size:.72rem;margin-top:6px">'+pend.length+' de '+d.items.length+' artículos con faltante.</p>';
+  return h;
+}
+
 /* ============ TAREAS ============ */
 const ORDEN_ESTADO = {"En proceso":0,"Pendiente":1,"Terminada":2};
 const tareaVencida = t => t.estado!=="Terminada" && t.fechaLimite && t.fechaLimite < hoyISO();
@@ -850,13 +1139,16 @@ function render(){
   const activas = db.tareas.filter(t=>t.estado!=="Terminada").length;
   badge.style.display = activas>0 ? "inline-block" : "none";
   badge.textContent = activas;
-  document.getElementById("btnNuevo").textContent = modulo==="tareas" ? "+ Nueva tarea" : "+ Nuevo registro";
+  const bn = document.getElementById("btnNuevo");
+  bn.textContent = modulo==="tareas" ? "+ Nueva tarea" : "+ Nuevo registro";
+  bn.style.display = modulo==="solicitudes" ? "none" : "";
   renderTabs();
   let h = "";
   if(modulo==="rodados") h = (vistaActual==="resumen") ? renderResumen() : renderVehiculo(vistaActual);
   else if(modulo==="remises") h = renderRemises();
   else if(modulo==="refrigerios") h = renderRefrigerios();
   else if(modulo==="alojamiento") h = renderAlojamiento();
+  else if(modulo==="solicitudes") h = renderSolicitudes();
   else h = renderTareas();
   document.getElementById("main").innerHTML = h;
 }
@@ -944,6 +1236,13 @@ function exportarCSV(){
       filas.push([fmtFecha(r.fecha), fmtFecha(r.fechaHasta), r.personas, r.sector, r.destino, r.motivo, r.factura, r.archivo, r.costo]);
     }
     nombre = "Alojamiento "+f+".csv";
+  }else if(modulo==="solicitudes"){
+    if(!solData){ toast("⚠ Primero cargá las solicitudes"); return; }
+    filas = [["N°","Fecha SC","Área","Descripción","Estado","Tango","Monto pendiente","Monto comprado","Observaciones"]];
+    for(const s of [...solData].sort((a,b)=>a.nro-b.nro)){
+      filas.push([s.nro, s.fecha, s.area, s.desc, s.estado, s.tango, s.pendiente, s.comprado, s.obs]);
+    }
+    nombre = "Solicitudes "+f+".csv";
   }else{
     filas = [["Estado","Tarea","Detalle","Responsable","Prioridad","Fecha límite","Creada"]];
     for(const t of db.tareas){
@@ -958,6 +1257,7 @@ function exportarCSV(){
 
 /* ============ Inicio ============ */
 render();
+nubeCargar();
 </script>
 </body>
 </html>
