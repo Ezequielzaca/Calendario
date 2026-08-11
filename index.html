@@ -159,6 +159,9 @@ tbody tr:hover{background:rgba(0,176,234,.05)}
 .cal-pago:hover{outline:1px solid var(--verde)}
 .cal-usd{background:rgba(0,176,234,.12)}
 .cal-usd b{color:#0077a3}
+.cal-tarde{box-shadow:inset 3px 0 0 #d64545}
+.cal-vto{background:rgba(214,69,69,.1)}
+.cal-vto b{color:#d64545}
 
 /* ===== Modal ===== */
 .overlay{position:fixed;inset:0;background:rgba(47,47,47,.35);backdrop-filter:blur(6px);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 16px;overflow-y:auto}
@@ -397,13 +400,30 @@ const FB_URL = "https://calendariotelk-default-rtdb.firebaseio.com/gestionBienes
 let nubeTimer = null;
 let nubeLista = false;   // recién después de la carga inicial se permite subir
 
+let nubeUltimoError = "";
 function setNube(estado, detalle){
   const el = document.getElementById("syncEstado");
   if(!el) return;
-  const m = {ok:"☁ Sincronizado", guardando:"☁ Guardando…", error:"⚠ Sin conexión (datos locales)", off:"☁ Conectando…"};
+  const m = {ok:"☁ Sincronizado", guardando:"☁ Guardando…", error:"⚠ Sin conexión ⓘ", off:"☁ Conectando…"};
   el.textContent = m[estado] || "";
   el.title = detalle || "";
   el.style.color = estado==="error" ? "#d64545" : "";
+  el.style.cursor = estado==="error" ? "pointer" : "";
+  if(estado==="error"){ nubeUltimoError = detalle || ""; el.onclick = verErrorNube; }
+  else { el.onclick = null; }
+}
+function verErrorNube(){
+  alert("No se pudo sincronizar con la base en la nube.\n\nDetalle técnico:\n" + (nubeUltimoError||"sin detalle") +
+    "\n\nQué revisar en Firebase → Realtime Database → Reglas:\nque el nodo gestionBienes tenga permiso de lectura Y escritura.\n\nMientras tanto la planilla sigue funcionando con los datos de esta PC.");
+}
+async function fbPut(){
+  const res = await fetch(FB_URL, {method:"PUT", body: JSON.stringify(db)});
+  if(!res.ok){
+    let extra = "";
+    try{ const j = await res.json(); if(j && j.error) extra = " — " + j.error; }catch(e){}
+    throw new Error("Escritura rechazada (HTTP "+res.status+")"+extra);
+  }
+  return res;
 }
 function normalizarDb(d){
   if(!d || typeof d !== "object") return null;
@@ -432,31 +452,32 @@ function nubeGuardar(){
   clearTimeout(nubeTimer);
   setNube("guardando");
   nubeTimer = setTimeout(async () => {
-    try{
-      const res = await fetch(FB_URL, {method:"PUT", body: JSON.stringify(db)});
-      if(!res.ok) throw new Error("HTTP "+res.status);
-      setNube("ok");
-    }catch(e){ setNube("error", String(e)); }
+    try{ await fbPut(); setNube("ok"); }
+    catch(e){ setNube("error", (e && e.message) ? e.message : String(e)); }
   }, 700);
 }
 async function nubeCargar(){
   setNube("off");
   try{
     const res = await fetch(FB_URL);
-    if(!res.ok) throw new Error("HTTP "+res.status);
+    if(!res.ok){
+      let extra = "";
+      try{ const j = await res.json(); if(j && j.error) extra = " — " + j.error; }catch(e){}
+      throw new Error("Lectura rechazada (HTTP "+res.status+")"+extra);
+    }
     const remoto = normalizarDb(await res.json());
     if(remoto){
       db = combinarDb(remoto, db);   // manda la nube; lo local que falte se suma, nada se borra
       try{ localStorage.setItem(LS_KEY, JSON.stringify(db)); }catch(e){}
     }
     nubeLista = true;
-    const res2 = await fetch(FB_URL, {method:"PUT", body: JSON.stringify(db)});
-    if(!res2.ok) throw new Error("HTTP "+res2.status);
+    await fbPut();
     setNube("ok");
     render();
   }catch(e){
     nubeLista = true;   // permite reintentar en el próximo guardado
-    setNube("error", String(e));
+    setNube("error", (e && e.message) ? e.message : String(e));
+    render();
   }
 }
 
@@ -581,7 +602,8 @@ const FORM_DEFS = {
     {id:"detalle", label:"Detalle", type:"textarea", full:true, ph:"Ej: Compañía: Claro · Área: Comercial · N° de línea…"}
   ],
   pagos: [
-    {id:"fecha", label:"Fecha de pago *", type:"date"},
+    {id:"fecha", label:"Fecha de pago prevista *", type:"date", hint:"Cuándo pensás pagarlo."},
+    {id:"fechaVto", label:"Vence el", type:"date", hint:"Vencimiento real de la factura."},
     {id:"moneda", label:"Moneda", type:"select", opts:()=>[["ARS","Pesos (ARS)"],["USD","Dólares (USD)"]]},
     {id:"proveedor", label:"Proveedor *", type:"text", full:true, list:()=>[...new Set(db.pagos.map(p=>(p.proveedor||"").trim()).filter(Boolean))], ph:"Ej: Ayala Automotores"},
     {id:"desglose", label:"Desglose del total", type:"textarea", full:true, ph:"Un concepto por renglón, con el monto al final:\nCuota unidad 1.500.000\nGastos bancarios 250.000", hint:"El total se calcula solo: suma el último número de cada renglón (formato 1.500.000,50)."}
@@ -1220,6 +1242,15 @@ function renderSeguimientos(){
 
 /* ============ CALENDARIO DE PAGOS ============ */
 let calMes = hoyISO().slice(0,7);
+let calVista = "pago";   // "pago" = fecha de pago prevista · "vto" = vencimiento
+function setCalVista(v){ calVista = v; render(); }
+const fechaCal = p => calVista==="vto" ? (p.fechaVto || p.fecha || "") : (p.fecha || "");
+const pagoTarde = p => p.fecha && p.fechaVto && p.fecha > p.fechaVto;
+function sumarDias(iso, n){
+  const d = new Date(iso + "T12:00:00");
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0,10);
+}
 function calNav(d){
   let [y,m] = calMes.split("-").map(Number);
   m += d;
@@ -1243,20 +1274,28 @@ function nuevoPagoDia(iso){ abrirModal('pagos', null, null, {fecha: iso}); }
 
 function renderPagos(){
   const [y,m] = calMes.split("-").map(Number);
-  const delMes = db.pagos.filter(p=>(p.fecha||"").startsWith(calMes));
+  const delMes = db.pagos.filter(p=>fechaCal(p).startsWith(calMes));
   const totARS = delMes.filter(p=>p.moneda!=="USD").reduce((a,p)=>a+(parseFloat(p.total)||0),0);
   const totUSD = delMes.filter(p=>p.moneda==="USD").reduce((a,p)=>a+(parseFloat(p.total)||0),0);
+  const hoyStr = hoyISO(), lim7 = sumarDias(hoyStr, 7);
+  const porVencer = db.pagos.filter(p=>p.fechaVto && p.fechaVto>=hoyStr && p.fechaVto<=lim7);
+  const tarde = db.pagos.filter(pagoTarde).length;
 
   let h = '<div class="kpis">'
-    + '<div class="kpi"><span class="num">'+delMes.length+'</span><span class="lbl">Pagos en '+MESES[m-1]+'</span></div>'
+    + '<div class="kpi"><span class="num">'+delMes.length+'</span><span class="lbl">'+(calVista==="vto"?"Vencen en ":"Pagos en ")+MESES[m-1]+'</span></div>'
     + '<div class="kpi"><span class="num">'+fmtMoney(totARS)+'</span><span class="lbl">Total del mes en pesos</span></div>'
     + '<div class="kpi"><span class="num">'+fmtUSD(totUSD)+'</span><span class="lbl">Total del mes en dólares</span></div>'
+    + '<div class="kpi"><span class="num" style="color:'+(porVencer.length>0?"#d64545":"var(--verde)")+'">'+porVencer.length+'</span><span class="lbl">Vencen en los próximos 7 días</span></div>'
+    + (tarde>0 ? '<div class="kpi"><span class="num" style="color:#d64545">'+tarde+'</span><span class="lbl">Con pago posterior al vencimiento</span></div>' : '')
     + '</div>';
 
   h += '<div class="section-bar"><div class="filtros" style="align-items:center">'
     + '<button class="filtro" onclick="calNav(-1)">◀</button>'
     + '<span style="font:700 1.05rem var(--font-telco);padding:0 8px">'+MESES[m-1]+' '+y+'</span>'
     + '<button class="filtro" onclick="calNav(1)">▶</button>'
+    + '<span style="width:14px"></span>'
+    + '<button class="filtro'+(calVista==="pago"?" active":"")+'" onclick="setCalVista(\'pago\')">Por fecha de pago</button>'
+    + '<button class="filtro'+(calVista==="vto"?" active":"")+'" onclick="setCalVista(\'vto\')">Por vencimiento</button>'
     + '</div><button class="btn btn-grad" onclick="abrirModal(\'pagos\')">+ Nuevo pago</button></div>';
 
   const offset = (new Date(y, m-1, 1).getDay()+6)%7;   // lunes = 0
@@ -1271,17 +1310,43 @@ function renderPagos(){
     for(let c=0;c<7;c++){
       if(fila*7+c < offset || dia > dias){ h += '<td class="cal-out"></td>'; continue; }
       const iso = calMes + "-" + String(dia).padStart(2,"0");
-      const pagosDia = db.pagos.filter(p=>p.fecha===iso);
+      const pagosDia = db.pagos.filter(p=>fechaCal(p)===iso);
       h += '<td class="cal-dia'+(iso===hoy?' cal-hoy':'')+'" onclick="nuevoPagoDia(\''+iso+'\')">'
         + '<div class="cal-num">'+dia+'</div>'
-        + pagosDia.map(p=>'<div class="cal-pago'+(p.moneda==="USD"?' cal-usd':'')+'" title="Click para ver el desglose y editar" onclick="event.stopPropagation();editarReg(\'pagos\',\''+p.id+'\')">'+esc(p.proveedor||"—")+'<b>'+fmtPago(p)+'</b></div>').join("")
+        + pagosDia.map(p=>{
+            const cls = (calVista==="vto" ? " cal-vto" : (p.moneda==="USD" ? " cal-usd" : "")) + (pagoTarde(p) ? " cal-tarde" : "");
+            const tip = (calVista==="vto"
+                  ? "Se paga el " + fmtFecha(p.fecha)
+                  : (p.fechaVto ? "Vence el " + fmtFecha(p.fechaVto) : "Sin vencimiento cargado"))
+                + (pagoTarde(p) ? " · ⚠ el pago queda después del vencimiento" : "") + " — click para editar";
+            return '<div class="cal-pago'+cls+'" title="'+esc(tip)+'" onclick="event.stopPropagation();editarReg(\'pagos\',\''+p.id+'\')">'
+              + (pagoTarde(p)?'⚠ ':'') + esc(p.proveedor||"—") + '<b>'+fmtPago(p)+'</b></div>';
+          }).join("")
         + '</td>';
       dia++;
     }
     h += '</tr>';
   }
   h += '</tbody></table></div></div>';
-  h += '<p class="muted" style="font-size:.75rem;margin:-12px 4px 0">Tocá un día para cargar un pago en esa fecha, o un pago para ver su desglose y editarlo. Verde = pesos · Celeste = dólares.</p>';
+  h += '<p class="muted" style="font-size:.75rem;margin:-12px 4px 0">Tocá un día para cargar un pago, o un pago para ver su desglose y editarlo. '
+    + (calVista==="vto" ? 'Estás viendo los <b>vencimientos</b> (rojo).' : 'Verde = pesos · Celeste = dólares.')
+    + ' La franja roja ⚠ marca los que se pagarían después de vencer.</p>';
+
+  if(porVencer.length){
+    h += '<h3 class="prio-titulo" style="margin-top:22px">⏰ Vencen en los próximos 7 días <span class="cnt">('+porVencer.length+')</span></h3>';
+    h += '<div class="glass tbl-card"><div class="tbl-scroll"><table><thead><tr>'
+      + '<th>Vence</th><th>Proveedor</th><th>Se paga</th><th class="right">Total</th><th></th></tr></thead><tbody>';
+    for(const p of [...porVencer].sort((a,b)=>a.fechaVto.localeCompare(b.fechaVto))){
+      h += '<tr style="cursor:pointer" onclick="editarReg(\'pagos\',\''+p.id+'\')">'
+        + '<td class="nowrap"><b>'+fmtFecha(p.fechaVto)+'</b></td>'
+        + '<td>'+esc(p.proveedor||"—")+'</td>'
+        + '<td class="nowrap'+(pagoTarde(p)?' tarea-vencida':'')+'">'+fmtFecha(p.fecha)+(pagoTarde(p)?' ⚠':'')+'</td>'
+        + '<td class="right money">'+fmtPago(p)+'</td>'
+        + accionesFila("pagos", p.id)
+        + '</tr>';
+    }
+    h += '</tbody></table></div></div>';
+  }
   return h;
 }
 
@@ -1550,9 +1615,9 @@ function exportarCSV(){
     }
     nombre = "Procedimientos "+f+".csv";
   }else if(modulo==="pagos"){
-    filas = [["Fecha","Proveedor","Moneda","Total","Desglose"]];
+    filas = [["Fecha de pago","Vencimiento","Proveedor","Moneda","Total","Desglose"]];
     for(const p of [...db.pagos].sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""))){
-      filas.push([fmtFecha(p.fecha), p.proveedor, p.moneda||"ARS", p.total, p.desglose]);
+      filas.push([fmtFecha(p.fecha), fmtFecha(p.fechaVto), p.proveedor, p.moneda||"ARS", p.total, p.desglose]);
     }
     nombre = "Pagos "+f+".csv";
   }else{
