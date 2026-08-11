@@ -34,16 +34,17 @@ body{
   width:250px;flex-shrink:0;position:sticky;top:0;height:100vh;
   background:rgba(245,247,249,.7);backdrop-filter:blur(18px);
   border-right:1px solid rgba(0,176,234,.15);
-  padding:26px 16px;display:flex;flex-direction:column;gap:6px;
-  transition:margin-left .25s;z-index:40;
+  padding:26px 16px;display:flex;flex-direction:column;gap:3px;
+  transition:margin-left .25s;z-index:40;overflow-y:auto;
 }
+.side-group{font-size:.62rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.08em;margin:10px 8px 3px}
 .sidebar .logo{display:block;margin:0 auto 8px;height:46px}
 .sidebar .side-title{font-size:.68rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.1em;text-align:center;margin-bottom:18px}
 .side-item{
   display:flex;align-items:center;gap:12px;width:100%;
   font:600 .92rem var(--font-telco);color:var(--gris-osc);
   background:transparent;border:none;border-radius:16px;
-  padding:14px 16px;cursor:pointer;text-align:left;transition:.2s;
+  padding:10px 14px;cursor:pointer;text-align:left;transition:.2s;
 }
 .side-item small{display:block;font-weight:400;font-size:.68rem;color:#6b7280}
 .side-item:hover{background:rgba(0,176,234,.08)}
@@ -145,6 +146,19 @@ tbody tr:hover{background:rgba(0,176,234,.05)}
 .proc-head .meta{font-weight:500;font-size:.75rem;color:#6b7280;margin-left:auto;white-space:nowrap}
 .proc-body{padding:0 26px 20px;font-size:.9rem}
 .proc-pasos{white-space:pre-wrap;background:rgba(255,255,255,.55);border:1px solid rgba(0,176,234,.15);border-radius:14px;padding:14px 18px;margin:6px 0 12px;line-height:1.55}
+.cal{table-layout:fixed;min-width:700px}
+.cal th{text-align:center}
+.cal td{height:96px;vertical-align:top;padding:6px;border:1px solid rgba(47,47,47,.05)}
+.cal-dia{cursor:pointer}
+.cal-dia:hover{background:rgba(0,176,234,.06)}
+.cal-out{background:rgba(47,47,47,.02)}
+.cal-num{font-weight:700;font-size:.75rem;color:#6b7280;margin-bottom:4px}
+.cal-hoy .cal-num{color:#fff;background:var(--cyan);border-radius:999px;width:22px;height:22px;display:flex;align-items:center;justify-content:center}
+.cal-pago{font-size:.68rem;background:rgba(0,146,56,.1);border-radius:8px;padding:3px 6px;margin-bottom:3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer}
+.cal-pago b{display:block;color:var(--verde)}
+.cal-pago:hover{outline:1px solid var(--verde)}
+.cal-usd{background:rgba(0,176,234,.12)}
+.cal-usd b{color:#0077a3}
 
 /* ===== Modal ===== */
 .overlay{position:fixed;inset:0;background:rgba(47,47,47,.35);backdrop-filter:blur(6px);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 16px;overflow-y:auto}
@@ -204,6 +218,7 @@ tbody tr:hover{background:rgba(0,176,234,.05)}
   <aside class="sidebar" id="sidebar">
     <img class="logo" id="logoTelco" alt="TelCo" src="">
     <div class="side-title">Compras y Contrataciones</div>
+    <div class="side-group">Gastos</div>
     <button class="side-item" data-mod="rodados" onclick="irModulo('rodados')">
       <span class="ico">🚗</span><span>Rodados<small>Flota y services</small></span>
     </button>
@@ -216,18 +231,23 @@ tbody tr:hover{background:rgba(0,176,234,.05)}
     <button class="side-item" data-mod="alojamiento" onclick="irModulo('alojamiento')">
       <span class="ico">🏨</span><span>Alojamiento<small>Viajes y estadías</small></span>
     </button>
+    <div class="side-group">Pagos y compras</div>
+    <button class="side-item" data-mod="pagos" onclick="irModulo('pagos')">
+      <span class="ico">💰</span><span>Pagos<small>Calendario mensual</small></span>
+    </button>
     <button class="side-item" data-mod="solicitudes" onclick="irModulo('solicitudes')">
       <span class="ico">📋</span><span>Solicitudes<small>Compras · sheet en vivo</small></span>
     </button>
     <button class="side-item" data-mod="seguimientos" onclick="irModulo('seguimientos')">
       <span class="ico">📦</span><span>Seguimientos<small>Inventario y ubicaciones</small></span>
     </button>
-    <button class="side-item" data-mod="procedimientos" onclick="irModulo('procedimientos')">
-      <span class="ico">📖</span><span>Procedimientos<small>Cómo se hace cada cosa</small></span>
-    </button>
+    <div class="side-group">Organización</div>
     <button class="side-item" data-mod="tareas" onclick="irModulo('tareas')">
       <span class="ico">✅</span><span>Tareas<small>Agenda y seguimiento</small></span>
       <span class="badge" id="badgeTareas" style="display:none"></span>
+    </button>
+    <button class="side-item" data-mod="procedimientos" onclick="irModulo('procedimientos')">
+      <span class="ico">📖</span><span>Procedimientos<small>Cómo se hace cada cosa</small></span>
     </button>
     <div class="side-foot"><div id="syncEstado" style="margin-bottom:6px;font-weight:700">☁ Conectando…</div>Dr. R. Carrillo 444 - IOSCor - 5° Piso<br>0810-555-8352 · info@telco.com.ar</div>
   </aside>
@@ -363,6 +383,7 @@ function cargar(){
   if(!Array.isArray(d.tareas))      d.tareas = [];
   if(!Array.isArray(d.seguimientos)) d.seguimientos = [];
   if(!Array.isArray(d.procedimientos)) d.procedimientos = [];
+  if(!Array.isArray(d.pagos)) d.pagos = [];
   return d;
 }
 function persistir(){
@@ -387,7 +408,7 @@ function setNube(estado, detalle){
 function normalizarDb(d){
   if(!d || typeof d !== "object") return null;
   if(!Array.isArray(d.vehiculos)) return null;
-  for(const k of ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos"]) if(!Array.isArray(d[k])) d[k] = [];
+  for(const k of ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos"]) if(!Array.isArray(d[k])) d[k] = [];
   return d;
 }
 function combinarDb(base, extra){
@@ -399,7 +420,7 @@ function combinarDb(base, extra){
       if(!cur.proxServiceKm && v.proxServiceKm) cur.proxServiceKm = v.proxServiceKm;
     }
   }
-  for(const k of ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos"]){
+  for(const k of ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos"]){
     for(const r of (extra[k]||[])){
       if(r && r.id && !base[k].find(x=>x.id===r.id)) base[k].push(r);
     }
@@ -487,6 +508,7 @@ const MODULOS = {
   solicitudes: {titulo:'<span>Solicitudes</span> de compra', coleccion:null},
   seguimientos:{titulo:'<span>Seguimientos</span> · inventario y ubicaciones', coleccion:"seguimientos"},
   procedimientos:{titulo:'<span>Procedimientos</span> · manual interno', coleccion:"procedimientos"},
+  pagos:       {titulo:'Calendario de <span>Pagos</span>',   coleccion:"pagos"},
   tareas:      {titulo:'Agenda de <span>Tareas</span>',      coleccion:"tareas"}
 };
 function irModulo(m){
@@ -558,6 +580,12 @@ const FORM_DEFS = {
     {id:"encargado", label:"Encargado / Responsable", type:"text", ph:"Ej: Juan Pérez"},
     {id:"detalle", label:"Detalle", type:"textarea", full:true, ph:"Ej: Compañía: Claro · Área: Comercial · N° de línea…"}
   ],
+  pagos: [
+    {id:"fecha", label:"Fecha de pago *", type:"date"},
+    {id:"moneda", label:"Moneda", type:"select", opts:()=>[["ARS","Pesos (ARS)"],["USD","Dólares (USD)"]]},
+    {id:"proveedor", label:"Proveedor *", type:"text", full:true, list:()=>[...new Set(db.pagos.map(p=>(p.proveedor||"").trim()).filter(Boolean))], ph:"Ej: Ayala Automotores"},
+    {id:"desglose", label:"Desglose del total", type:"textarea", full:true, ph:"Un concepto por renglón, con el monto al final:\nCuota unidad 1.500.000\nGastos bancarios 250.000", hint:"El total se calcula solo: suma el último número de cada renglón (formato 1.500.000,50)."}
+  ],
   procedimientos: [
     {id:"titulo", label:"Procedimiento *", type:"text", full:true, ph:"Ej: Cómo cargar una factura de service"},
     {id:"categoria", label:"Categoría", type:"text", list:()=>[...new Set(db.procedimientos.map(p=>(p.categoria||"").trim()).filter(Boolean))], ph:"Ej: Rodados, Compras, Refrigerios…"},
@@ -582,7 +610,7 @@ function abrirModal(mod, reg, extra, prefill){
   editandoCol = mod;
   editandoId = reg ? reg.id : null;
   document.getElementById("modalTitle").innerHTML = (reg ? "Editar" : "Nuevo") + " <span>" +
-    ({rodados:"registro", remises:"traslado", refrigerios:"compra", alojamiento:"alojamiento", seguimientos:"producto", procedimientos:"procedimiento", tareas:"tarea"}[mod]) + "</span>";
+    ({rodados:"registro", remises:"traslado", refrigerios:"compra", alojamiento:"alojamiento", seguimientos:"producto", procedimientos:"procedimiento", pagos:"pago", tareas:"tarea"}[mod]) + "</span>";
   let h = "";
   for(const f of FORM_DEFS[mod]){
     h += '<div class="fld'+(f.full?" full":"")+'"><label>'+f.label+'</label>';
@@ -613,7 +641,7 @@ function abrirModal(mod, reg, extra, prefill){
   if(!reg && prefill){
     for(const k in prefill){
       const el = document.getElementById("fm_"+k);
-      if(el && !el.value) el.value = prefill[k];
+      if(el) el.value = prefill[k];
     }
   }
   document.getElementById("overlay").classList.add("open");
@@ -634,6 +662,10 @@ function guardarModal(){
   }else if(mod==="seguimientos"){
     if(!datos.producto){ toast("⚠ Ingresá el nombre del producto"); return; }
   }else if(!datos.fecha){ toast("⚠ Ingresá la fecha"); return; }
+  if(mod==="pagos"){
+    if(!datos.proveedor){ toast("⚠ Ingresá el proveedor"); return; }
+    datos.total = totalDesglose(datos.desglose);
+  }
 
   if(mod==="procedimientos") datos.actualizado = hoyISO();
   const col = db[MODULOS[mod].coleccion];
@@ -1186,6 +1218,73 @@ function renderSeguimientos(){
   return h;
 }
 
+/* ============ CALENDARIO DE PAGOS ============ */
+let calMes = hoyISO().slice(0,7);
+function calNav(d){
+  let [y,m] = calMes.split("-").map(Number);
+  m += d;
+  if(m<1){ m=12; y--; }
+  if(m>12){ m=1; y++; }
+  calMes = y + "-" + String(m).padStart(2,"0");
+  render();
+}
+function totalDesglose(txt){
+  let tot = 0;
+  for(const ln of String(txt||"").split("\n")){
+    const m = ln.match(/-?[\d.,]+\s*$/);
+    if(m) tot += numeroS(m[0]);
+  }
+  return tot;
+}
+const fmtUSD = n => "US$ " + new Intl.NumberFormat("es-AR",{maximumFractionDigits:2}).format(n||0);
+const fmtPago = p => p.moneda==="USD" ? fmtUSD(p.total) : fmtMoney(p.total||0);
+const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+function nuevoPagoDia(iso){ abrirModal('pagos', null, null, {fecha: iso}); }
+
+function renderPagos(){
+  const [y,m] = calMes.split("-").map(Number);
+  const delMes = db.pagos.filter(p=>(p.fecha||"").startsWith(calMes));
+  const totARS = delMes.filter(p=>p.moneda!=="USD").reduce((a,p)=>a+(parseFloat(p.total)||0),0);
+  const totUSD = delMes.filter(p=>p.moneda==="USD").reduce((a,p)=>a+(parseFloat(p.total)||0),0);
+
+  let h = '<div class="kpis">'
+    + '<div class="kpi"><span class="num">'+delMes.length+'</span><span class="lbl">Pagos en '+MESES[m-1]+'</span></div>'
+    + '<div class="kpi"><span class="num">'+fmtMoney(totARS)+'</span><span class="lbl">Total del mes en pesos</span></div>'
+    + '<div class="kpi"><span class="num">'+fmtUSD(totUSD)+'</span><span class="lbl">Total del mes en dólares</span></div>'
+    + '</div>';
+
+  h += '<div class="section-bar"><div class="filtros" style="align-items:center">'
+    + '<button class="filtro" onclick="calNav(-1)">◀</button>'
+    + '<span style="font:700 1.05rem var(--font-telco);padding:0 8px">'+MESES[m-1]+' '+y+'</span>'
+    + '<button class="filtro" onclick="calNav(1)">▶</button>'
+    + '</div><button class="btn btn-grad" onclick="abrirModal(\'pagos\')">+ Nuevo pago</button></div>';
+
+  const offset = (new Date(y, m-1, 1).getDay()+6)%7;   // lunes = 0
+  const dias = new Date(y, m, 0).getDate();
+  const hoy = hoyISO();
+  h += '<div class="glass tbl-card"><div class="tbl-scroll"><table class="cal"><thead><tr>'
+    + ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"].map(d=>'<th>'+d+'</th>').join("")
+    + '</tr></thead><tbody>';
+  let dia = 1;
+  for(let fila=0; fila<6 && dia<=dias; fila++){
+    h += '<tr>';
+    for(let c=0;c<7;c++){
+      if(fila*7+c < offset || dia > dias){ h += '<td class="cal-out"></td>'; continue; }
+      const iso = calMes + "-" + String(dia).padStart(2,"0");
+      const pagosDia = db.pagos.filter(p=>p.fecha===iso);
+      h += '<td class="cal-dia'+(iso===hoy?' cal-hoy':'')+'" onclick="nuevoPagoDia(\''+iso+'\')">'
+        + '<div class="cal-num">'+dia+'</div>'
+        + pagosDia.map(p=>'<div class="cal-pago'+(p.moneda==="USD"?' cal-usd':'')+'" title="Click para ver el desglose y editar" onclick="event.stopPropagation();editarReg(\'pagos\',\''+p.id+'\')">'+esc(p.proveedor||"—")+'<b>'+fmtPago(p)+'</b></div>').join("")
+        + '</td>';
+      dia++;
+    }
+    h += '</tr>';
+  }
+  h += '</tbody></table></div></div>';
+  h += '<p class="muted" style="font-size:.75rem;margin:-12px 4px 0">Tocá un día para cargar un pago en esa fecha, o un pago para ver su desglose y editarlo. Verde = pesos · Celeste = dólares.</p>';
+  return h;
+}
+
 /* ============ PROCEDIMIENTOS (manual interno) ============ */
 let filtroProc = "";
 let procAbiertos = {};
@@ -1342,6 +1441,7 @@ function render(){
   else if(modulo==="solicitudes") h = renderSolicitudes();
   else if(modulo==="seguimientos") h = renderSeguimientos();
   else if(modulo==="procedimientos") h = renderProcedimientos();
+  else if(modulo==="pagos") h = renderPagos();
   else h = renderTareas();
   document.getElementById("main").innerHTML = h;
 }
@@ -1368,7 +1468,7 @@ function importarJSON(ev){
     try{
       const d = JSON.parse(rd.result);
       if(!d || !Array.isArray(d.vehiculos)) throw new Error("formato");
-      const COLS = ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos"];
+      const COLS = ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos"];
       for(const k of COLS) if(!Array.isArray(d[k])) d[k] = [];
       const combinar = confirm("¿COMBINAR el respaldo con los datos actuales?\n\nAceptar = combinar (agrega lo nuevo, NO borra nada de lo que ya tenés)\nCancelar = reemplazo total");
       if(combinar){
@@ -1449,6 +1549,12 @@ function exportarCSV(){
       filas.push([p.titulo, p.categoria, p.referente, fmtFecha(p.actualizado), p.pasos, p.enlace]);
     }
     nombre = "Procedimientos "+f+".csv";
+  }else if(modulo==="pagos"){
+    filas = [["Fecha","Proveedor","Moneda","Total","Desglose"]];
+    for(const p of [...db.pagos].sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""))){
+      filas.push([fmtFecha(p.fecha), p.proveedor, p.moneda||"ARS", p.total, p.desglose]);
+    }
+    nombre = "Pagos "+f+".csv";
   }else{
     filas = [["Estado","Tarea","Detalle","Responsable","Prioridad","Fecha límite","Creada"]];
     for(const t of db.tareas){
