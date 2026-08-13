@@ -245,6 +245,10 @@ tbody tr:hover{background:rgba(0,176,234,.05)}
       <span class="ico">📦</span><span>Seguimientos<small>Inventario y ubicaciones</small></span>
     </button>
     <div class="side-group">Organización</div>
+    <button class="side-item" data-mod="recordatorios" onclick="irModulo('recordatorios')">
+      <span class="ico">🔔</span><span>Recordatorios<small>Vencimientos que se repiten</small></span>
+      <span class="badge" id="badgeRec" style="display:none"></span>
+    </button>
     <button class="side-item" data-mod="tareas" onclick="irModulo('tareas')">
       <span class="ico">✅</span><span>Tareas<small>Agenda y seguimiento</small></span>
       <span class="badge" id="badgeTareas" style="display:none"></span>
@@ -387,6 +391,7 @@ function cargar(){
   if(!Array.isArray(d.seguimientos)) d.seguimientos = [];
   if(!Array.isArray(d.procedimientos)) d.procedimientos = [];
   if(!Array.isArray(d.pagos)) d.pagos = [];
+  if(!Array.isArray(d.recordatorios)) d.recordatorios = [];
   return d;
 }
 function persistir(){
@@ -428,7 +433,7 @@ async function fbPut(){
 function normalizarDb(d){
   if(!d || typeof d !== "object") return null;
   if(!Array.isArray(d.vehiculos)) return null;
-  for(const k of ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos"]) if(!Array.isArray(d[k])) d[k] = [];
+  for(const k of ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos","recordatorios"]) if(!Array.isArray(d[k])) d[k] = [];
   return d;
 }
 function combinarDb(base, extra){
@@ -440,7 +445,7 @@ function combinarDb(base, extra){
       if(!cur.proxServiceKm && v.proxServiceKm) cur.proxServiceKm = v.proxServiceKm;
     }
   }
-  for(const k of ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos"]){
+  for(const k of ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos","recordatorios"]){
     for(const r of (extra[k]||[])){
       if(r && r.id && !base[k].find(x=>x.id===r.id)) base[k].push(r);
     }
@@ -530,6 +535,7 @@ const MODULOS = {
   seguimientos:{titulo:'<span>Seguimientos</span> · inventario y ubicaciones', coleccion:"seguimientos"},
   procedimientos:{titulo:'<span>Procedimientos</span> · manual interno', coleccion:"procedimientos"},
   pagos:       {titulo:'Calendario de <span>Pagos</span>',   coleccion:"pagos"},
+  recordatorios:{titulo:'<span>Recordatorios</span> y vencimientos', coleccion:"recordatorios"},
   tareas:      {titulo:'Agenda de <span>Tareas</span>',      coleccion:"tareas"}
 };
 function irModulo(m){
@@ -601,6 +607,14 @@ const FORM_DEFS = {
     {id:"encargado", label:"Encargado / Responsable", type:"text", ph:"Ej: Juan Pérez"},
     {id:"detalle", label:"Detalle", type:"textarea", full:true, ph:"Ej: Compañía: Claro · Área: Comercial · N° de línea…"}
   ],
+  recordatorios: [
+    {id:"titulo", label:"Recordatorio *", type:"text", full:true, ph:"Ej: Renovar seguro AF751GT · VTV Tracker · Patente 2° cuota"},
+    {id:"fecha", label:"Próxima fecha *", type:"date"},
+    {id:"repetir", label:"Se repite", type:"select", opts:()=>[["Una vez","Una sola vez"],["Semanal","Cada semana"],["Mensual","Todos los meses"],["Bimestral","Cada 2 meses"],["Trimestral","Cada 3 meses"],["Semestral","Cada 6 meses"],["Anual","Todos los años"]]},
+    {id:"categoria", label:"Categoría", type:"text", list:()=>[...new Set(db.recordatorios.map(r=>(r.categoria||"").trim()).filter(Boolean))], ph:"Ej: Seguros, Patentes, Servicios"},
+    {id:"responsable", label:"Responsable", type:"text", ph:"Ej: Alexis"},
+    {id:"notas", label:"Notas", type:"textarea", full:true, ph:"Ej: Pedir cotización a 3 aseguradoras antes del vencimiento…"}
+  ],
   pagos: [
     {id:"fecha", label:"Fecha de pago prevista *", type:"date", hint:"Cuándo pensás pagarlo."},
     {id:"fechaVto", label:"Vence el", type:"date", hint:"Vencimiento real de la factura."},
@@ -632,7 +646,7 @@ function abrirModal(mod, reg, extra, prefill){
   editandoCol = mod;
   editandoId = reg ? reg.id : null;
   document.getElementById("modalTitle").innerHTML = (reg ? "Editar" : "Nuevo") + " <span>" +
-    ({rodados:"registro", remises:"traslado", refrigerios:"compra", alojamiento:"alojamiento", seguimientos:"producto", procedimientos:"procedimiento", pagos:"pago", tareas:"tarea"}[mod]) + "</span>";
+    ({rodados:"registro", remises:"traslado", refrigerios:"compra", alojamiento:"alojamiento", seguimientos:"producto", procedimientos:"procedimiento", pagos:"pago", recordatorios:"recordatorio", tareas:"tarea"}[mod]) + "</span>";
   let h = "";
   for(const f of FORM_DEFS[mod]){
     h += '<div class="fld'+(f.full?" full":"")+'"><label>'+f.label+'</label>';
@@ -679,8 +693,9 @@ function guardarModal(){
     const el = document.getElementById("fm_"+f.id);
     datos[f.id] = (el.value||"").trim ? String(el.value).trim() : el.value;
   }
-  if(mod==="tareas" || mod==="procedimientos"){
+  if(mod==="tareas" || mod==="procedimientos" || mod==="recordatorios"){
     if(!datos.titulo){ toast("⚠ Ingresá el título"); return; }
+    if(mod==="recordatorios" && !datos.fecha){ toast("⚠ Ingresá la próxima fecha"); return; }
   }else if(mod==="seguimientos"){
     if(!datos.producto){ toast("⚠ Ingresá el nombre del producto"); return; }
   }else if(!datos.fecha){ toast("⚠ Ingresá la fecha"); return; }
@@ -722,6 +737,7 @@ function eliminarReg(mod, id){
   const r = col.find(x=>x.id===id);
   if(!r) return;
   const desc = mod==="tareas" ? ('la tarea "'+ (r.titulo||"") +'"')
+             : mod==="recordatorios" ? ('el recordatorio "'+ (r.titulo||"") +'"')
              : mod==="procedimientos" ? ('el procedimiento "'+ (r.titulo||"") +'"')
              : mod==="seguimientos" ? ('"'+ (r.producto||"") +'" en '+ (r.ubicacion||"s/ubicación"))
              : ("el registro del " + fmtFecha(r.fecha));
@@ -1240,6 +1256,124 @@ function renderSeguimientos(){
   return h;
 }
 
+/* ============ RECORDATORIOS ============ */
+const MESES_REP = {"Mensual":1,"Bimestral":2,"Trimestral":3,"Semestral":6,"Anual":12};
+let filtroRec = "Pendientes";
+function setFiltroRec(f){ filtroRec = f; render(); }
+function sumarMeses(iso, n){
+  const [y,m,d] = iso.split("-").map(Number);
+  const dt = new Date(y, m-1+n, 1);
+  const ultimo = new Date(dt.getFullYear(), dt.getMonth()+1, 0).getDate();
+  dt.setDate(Math.min(d, ultimo));
+  return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+}
+function proximaFecha(r){
+  if(!r.fecha) return "";
+  if(r.repetir==="Semanal") return sumarDias(r.fecha, 7);
+  const n = MESES_REP[r.repetir];
+  return n ? sumarMeses(r.fecha, n) : "";
+}
+function diasHasta(iso){
+  if(!iso) return null;
+  const a = new Date(hoyISO()+"T12:00:00"), b = new Date(iso+"T12:00:00");
+  return Math.round((b-a)/86400000);
+}
+function textoDias(n){
+  if(n===null) return "";
+  if(n===0) return "hoy";
+  if(n===1) return "mañana";
+  if(n===-1) return "ayer";
+  return n>0 ? ("en "+n+" días") : ("hace "+(-n)+" días");
+}
+function marcarHechoRec(id){
+  const r = db.recordatorios.find(x=>x.id===id);
+  if(!r) return;
+  const prox = proximaFecha(r);
+  if(prox){
+    r.fecha = prox;
+    persistir(); render();
+    toast("✓ Listo — próximo aviso: "+fmtFecha(prox));
+  }else{
+    r.hecho = true; r.fechaHecho = hoyISO();
+    persistir(); render();
+    toast("✓ Recordatorio completado");
+  }
+}
+function reactivarRec(id){
+  const r = db.recordatorios.find(x=>x.id===id);
+  if(r){ r.hecho = false; persistir(); render(); toast("↺ Reactivado"); }
+}
+const recPendiente = r => !r.hecho;
+
+function renderRecordatorios(){
+  const pend = db.recordatorios.filter(recPendiente);
+  const conDias = pend.map(r=>({r, d: diasHasta(r.fecha)}));
+  const vencidos = conDias.filter(x=>x.d!==null && x.d<0);
+  const hoyRec   = conDias.filter(x=>x.d===0);
+  const semana   = conDias.filter(x=>x.d!==null && x.d>0 && x.d<=7);
+  const mes      = conDias.filter(x=>x.d!==null && x.d>7 && x.d<=31);
+  const luego    = conDias.filter(x=>x.d===null || x.d>31);
+
+  let h = '<div class="kpis">'
+    + '<div class="kpi"><span class="num" style="color:'+(vencidos.length?"#d64545":"var(--verde)")+'">'+vencidos.length+'</span><span class="lbl">Vencidos</span></div>'
+    + '<div class="kpi"><span class="num">'+hoyRec.length+'</span><span class="lbl">Para hoy</span></div>'
+    + '<div class="kpi"><span class="num">'+semana.length+'</span><span class="lbl">Próximos 7 días</span></div>'
+    + '<div class="kpi"><span class="num">'+pend.length+'</span><span class="lbl">Activos en total</span></div>'
+    + '</div>';
+
+  h += '<div class="section-bar"><div class="filtros">';
+  for(const f of ["Pendientes","Completados","Todos"]){
+    h += '<button class="filtro'+(filtroRec===f?" active":"")+'" onclick="setFiltroRec(\''+f+'\')">'+f+'</button>';
+  }
+  h += '</div><button class="btn btn-grad" onclick="abrirModal(\'recordatorios\')">+ Nuevo recordatorio</button></div>';
+
+  if(filtroRec!=="Pendientes"){
+    let lista = filtroRec==="Completados" ? db.recordatorios.filter(r=>r.hecho) : db.recordatorios;
+    lista = [...lista].sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""));
+    if(lista.length===0) return h + '<div class="glass tbl-card"><div class="empty">No hay recordatorios en "'+esc(filtroRec)+'".</div></div>';
+    h += tablaRec(lista.map(r=>({r, d:diasHasta(r.fecha)})), null);
+    return h;
+  }
+
+  if(pend.length===0){
+    return h + '<div class="glass tbl-card"><div class="empty">No hay recordatorios activos. Usá <b>+ Nuevo recordatorio</b> para cargar el primero (ej: renovar seguro, VTV, patente).</div></div>';
+  }
+  const bloques = [
+    ["🔴 Vencidos", vencidos], ["🟠 Para hoy", hoyRec], ["🟡 Próximos 7 días", semana],
+    ["🔵 Este mes", mes], ["⚪ Más adelante", luego]
+  ];
+  for(const [tit, arr] of bloques){
+    if(arr.length===0) continue;
+    arr.sort((a,b)=>(a.r.fecha||"").localeCompare(b.r.fecha||""));
+    h += '<h3 class="prio-titulo">'+tit+' <span class="cnt">('+arr.length+')</span></h3>' + tablaRec(arr, tit.includes("Vencidos"));
+  }
+  return h;
+}
+function tablaRec(items, resaltar){
+  let h = '<div class="glass tbl-card"><div class="tbl-scroll"><table><thead><tr>'
+    + '<th>Cuándo</th><th>Recordatorio</th><th>Repite</th><th>Categoría</th><th>Responsable</th><th></th>'
+    + '</tr></thead><tbody>';
+  for(const {r, d} of items){
+    const venc = !r.hecho && d!==null && d<0;
+    h += '<tr class="'+(r.hecho?"tarea-done":"")+'">'
+      + '<td class="nowrap'+(venc?" tarea-vencida":"")+'"><b>'+fmtFecha(r.fecha)+'</b>'
+      + (r.hecho?'':'<br><span class="muted" style="font-size:.75rem">'+textoDias(d)+'</span>')+'</td>'
+      + '<td style="min-width:220px"><b class="t-titulo">'+esc(r.titulo)+'</b>'
+      + (r.notas ? '<br><span class="muted" style="font-size:.8rem">'+esc(r.notas)+'</span>' : "")+'</td>'
+      + '<td class="nowrap">'+((r.repetir && r.repetir!=="Una vez") ? '<span class="chip chip-service">↻ '+esc(r.repetir)+'</span>' : '<span class="muted">Una vez</span>')+'</td>'
+      + '<td>'+esc(r.categoria||"—")+'</td>'
+      + '<td>'+esc(r.responsable||"—")+'</td>'
+      + '<td class="nowrap">'
+      + (r.hecho
+          ? '<button class="btn-edit" title="Reactivar" onclick="reactivarRec(\''+r.id+'\')">↺</button>'
+          : '<button class="btn-edit" title="Marcar como hecho" onclick="marcarHechoRec(\''+r.id+'\')">✓ Listo</button>')
+      + '<button class="btn-edit" title="Editar" onclick="editarReg(\'recordatorios\',\''+r.id+'\')">✎</button>'
+      + '<button class="btn-danger" title="Eliminar" onclick="eliminarReg(\'recordatorios\',\''+r.id+'\')">🗑</button></td>'
+      + '</tr>';
+  }
+  return h + '</tbody></table></div></div>';
+}
+
 /* ============ CALENDARIO DE PAGOS ============ */
 let calMes = hoyISO().slice(0,7);
 let calVista = "pago";   // "pago" = fecha de pago prevista · "vto" = vencimiento
@@ -1494,6 +1628,14 @@ function render(){
   const activas = db.tareas.filter(t=>t.estado!=="Terminada").length;
   badge.style.display = activas>0 ? "inline-block" : "none";
   badge.textContent = activas;
+  const bRec = document.getElementById("badgeRec");
+  if(bRec){
+    const urg = db.recordatorios.filter(r=>!r.hecho && r.fecha && r.fecha<=hoyISO()).length;
+    bRec.style.display = urg>0 ? "inline-block" : "none";
+    bRec.textContent = urg;
+    bRec.style.background = "rgba(214,69,69,.85)";
+    bRec.style.color = "#fff";
+  }
   const bn = document.getElementById("btnNuevo");
   bn.textContent = modulo==="tareas" ? "+ Nueva tarea" : "+ Nuevo registro";
   bn.style.display = modulo==="solicitudes" ? "none" : "";
@@ -1507,6 +1649,7 @@ function render(){
   else if(modulo==="seguimientos") h = renderSeguimientos();
   else if(modulo==="procedimientos") h = renderProcedimientos();
   else if(modulo==="pagos") h = renderPagos();
+  else if(modulo==="recordatorios") h = renderRecordatorios();
   else h = renderTareas();
   document.getElementById("main").innerHTML = h;
 }
@@ -1533,7 +1676,7 @@ function importarJSON(ev){
     try{
       const d = JSON.parse(rd.result);
       if(!d || !Array.isArray(d.vehiculos)) throw new Error("formato");
-      const COLS = ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos"];
+      const COLS = ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos","recordatorios"];
       for(const k of COLS) if(!Array.isArray(d[k])) d[k] = [];
       const combinar = confirm("¿COMBINAR el respaldo con los datos actuales?\n\nAceptar = combinar (agrega lo nuevo, NO borra nada de lo que ya tenés)\nCancelar = reemplazo total");
       if(combinar){
@@ -1620,6 +1763,12 @@ function exportarCSV(){
       filas.push([fmtFecha(p.fecha), fmtFecha(p.fechaVto), p.proveedor, p.moneda||"ARS", p.total, p.desglose]);
     }
     nombre = "Pagos "+f+".csv";
+  }else if(modulo==="recordatorios"){
+    filas = [["Próxima fecha","Recordatorio","Repite","Categoría","Responsable","Estado","Notas"]];
+    for(const r of [...db.recordatorios].sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""))){
+      filas.push([fmtFecha(r.fecha), r.titulo, r.repetir||"Una vez", r.categoria, r.responsable, r.hecho?"Completado":"Pendiente", r.notas]);
+    }
+    nombre = "Recordatorios "+f+".csv";
   }else{
     filas = [["Estado","Tarea","Detalle","Responsable","Prioridad","Fecha límite","Creada"]];
     for(const t of db.tareas){
