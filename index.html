@@ -159,6 +159,14 @@ tbody tr:hover{background:rgba(0,176,234,.05)}
 .cal-pago:hover{outline:1px solid var(--verde)}
 .cal-usd{background:rgba(0,176,234,.12)}
 .cal-usd b{color:#0077a3}
+#fm_texto{min-height:260px;line-height:1.55}
+.notas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
+.nota{display:flex;flex-direction:column;padding:18px 20px;border-radius:20px;background:rgba(255,255,255,.65);backdrop-filter:blur(10px);border:1px solid rgba(0,176,234,.18);box-shadow:0 6px 26px rgba(0,176,234,.1)}
+.nota-fijada{border-color:rgba(204,212,0,.8);background:rgba(204,212,0,.09)}
+.nota h4{font-size:.98rem;font-weight:700;margin-bottom:6px}
+.nota-txt{white-space:pre-wrap;word-break:break-word;font-size:.87rem;line-height:1.55;flex:1;margin-bottom:12px}
+.nota-pie{display:flex;align-items:center;gap:6px;font-size:.72rem;color:#9ca3af;border-top:1px solid rgba(47,47,47,.07);padding-top:9px}
+.nota-pie .acc{margin-left:auto;display:flex;gap:2px}
 .cal-tarde{box-shadow:inset 3px 0 0 #d64545}
 .cal-vto{background:rgba(214,69,69,.1)}
 .cal-vto b{color:#d64545}
@@ -255,6 +263,9 @@ tbody tr:hover{background:rgba(0,176,234,.05)}
     </button>
     <button class="side-item" data-mod="procedimientos" onclick="irModulo('procedimientos')">
       <span class="ico">📖</span><span>Procedimientos<small>Cómo se hace cada cosa</small></span>
+    </button>
+    <button class="side-item" data-mod="anotaciones" onclick="irModulo('anotaciones')">
+      <span class="ico">📝</span><span>Anotaciones<small>Notas libres</small></span>
     </button>
     <div class="side-foot"><div id="syncEstado" style="margin-bottom:6px;font-weight:700">☁ Conectando…</div>Dr. R. Carrillo 444 - IOSCor - 5° Piso<br>0810-555-8352 · info@telco.com.ar</div>
   </aside>
@@ -392,6 +403,7 @@ function cargar(){
   if(!Array.isArray(d.procedimientos)) d.procedimientos = [];
   if(!Array.isArray(d.pagos)) d.pagos = [];
   if(!Array.isArray(d.recordatorios)) d.recordatorios = [];
+  if(!Array.isArray(d.anotaciones)) d.anotaciones = [];
   return d;
 }
 function persistir(){
@@ -433,7 +445,7 @@ async function fbPut(){
 function normalizarDb(d){
   if(!d || typeof d !== "object") return null;
   if(!Array.isArray(d.vehiculos)) return null;
-  for(const k of ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos","recordatorios"]) if(!Array.isArray(d[k])) d[k] = [];
+  for(const k of ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos","recordatorios","anotaciones"]) if(!Array.isArray(d[k])) d[k] = [];
   return d;
 }
 function combinarDb(base, extra){
@@ -445,7 +457,7 @@ function combinarDb(base, extra){
       if(!cur.proxServiceKm && v.proxServiceKm) cur.proxServiceKm = v.proxServiceKm;
     }
   }
-  for(const k of ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos","recordatorios"]){
+  for(const k of ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos","recordatorios","anotaciones"]){
     for(const r of (extra[k]||[])){
       if(r && r.id && !base[k].find(x=>x.id===r.id)) base[k].push(r);
     }
@@ -536,6 +548,7 @@ const MODULOS = {
   procedimientos:{titulo:'<span>Procedimientos</span> · manual interno', coleccion:"procedimientos"},
   pagos:       {titulo:'Calendario de <span>Pagos</span>',   coleccion:"pagos"},
   recordatorios:{titulo:'<span>Recordatorios</span> y vencimientos', coleccion:"recordatorios"},
+  anotaciones: {titulo:'<span>Anotaciones</span> · notas libres', coleccion:"anotaciones"},
   tareas:      {titulo:'Agenda de <span>Tareas</span>',      coleccion:"tareas"}
 };
 function irModulo(m){
@@ -607,6 +620,11 @@ const FORM_DEFS = {
     {id:"encargado", label:"Encargado / Responsable", type:"text", ph:"Ej: Juan Pérez"},
     {id:"detalle", label:"Detalle", type:"textarea", full:true, ph:"Ej: Compañía: Claro · Área: Comercial · N° de línea…"}
   ],
+  anotaciones: [
+    {id:"titulo", label:"Título (opcional)", type:"text", full:true, ph:"Ej: Reunión con el proveedor · Ideas · Pendiente de Gerencia"},
+    {id:"texto", label:"Anotación *", type:"textarea", full:true, ph:"Escribí libremente lo que necesites…"},
+    {id:"autor", label:"Quién anota", type:"text", ph:"Ej: Alexis"}
+  ],
   recordatorios: [
     {id:"titulo", label:"Recordatorio *", type:"text", full:true, ph:"Ej: Renovar seguro AF751GT · VTV Tracker · Patente 2° cuota"},
     {id:"fecha", label:"Próxima fecha *", type:"date"},
@@ -646,7 +664,7 @@ function abrirModal(mod, reg, extra, prefill){
   editandoCol = mod;
   editandoId = reg ? reg.id : null;
   document.getElementById("modalTitle").innerHTML = (reg ? "Editar" : "Nuevo") + " <span>" +
-    ({rodados:"registro", remises:"traslado", refrigerios:"compra", alojamiento:"alojamiento", seguimientos:"producto", procedimientos:"procedimiento", pagos:"pago", recordatorios:"recordatorio", tareas:"tarea"}[mod]) + "</span>";
+    ({rodados:"registro", remises:"traslado", refrigerios:"compra", alojamiento:"alojamiento", seguimientos:"producto", procedimientos:"procedimiento", pagos:"pago", recordatorios:"recordatorio", anotaciones:"anotación", tareas:"tarea"}[mod]) + "</span>";
   let h = "";
   for(const f of FORM_DEFS[mod]){
     h += '<div class="fld'+(f.full?" full":"")+'"><label>'+f.label+'</label>';
@@ -698,6 +716,9 @@ function guardarModal(){
     if(mod==="recordatorios" && !datos.fecha){ toast("⚠ Ingresá la próxima fecha"); return; }
   }else if(mod==="seguimientos"){
     if(!datos.producto){ toast("⚠ Ingresá el nombre del producto"); return; }
+  }else if(mod==="anotaciones"){
+    if(!datos.texto){ toast("⚠ Escribí algo en la anotación"); return; }
+    datos.actualizado = hoyISO();
   }else if(!datos.fecha){ toast("⚠ Ingresá la fecha"); return; }
   if(mod==="pagos"){
     if(!datos.proveedor){ toast("⚠ Ingresá el proveedor"); return; }
@@ -737,6 +758,7 @@ function eliminarReg(mod, id){
   const r = col.find(x=>x.id===id);
   if(!r) return;
   const desc = mod==="tareas" ? ('la tarea "'+ (r.titulo||"") +'"')
+             : mod==="anotaciones" ? ('la anotación "'+ ((r.titulo || r.texto || "").slice(0,40)) +'…"')
              : mod==="recordatorios" ? ('el recordatorio "'+ (r.titulo||"") +'"')
              : mod==="procedimientos" ? ('el procedimiento "'+ (r.titulo||"") +'"')
              : mod==="seguimientos" ? ('"'+ (r.producto||"") +'" en '+ (r.ubicacion||"s/ubicación"))
@@ -1256,6 +1278,47 @@ function renderSeguimientos(){
   return h;
 }
 
+/* ============ ANOTACIONES (notas libres) ============ */
+let buscaNota = "";
+function setBuscaNota(v){ buscaNota = String(v).toLowerCase(); render(); }
+function fijarNota(id){
+  const n = db.anotaciones.find(x=>x.id===id);
+  if(n){ n.fijada = !n.fijada; persistir(); render(); toast(n.fijada ? "📌 Anotación fijada" : "Anotación liberada"); }
+}
+function renderAnotaciones(){
+  let h = '<div class="section-bar">'
+    + '<input class="ubi-inline" style="width:300px" placeholder="🔎 Buscar y Enter…" value="'+esc(buscaNota)+'" onchange="setBuscaNota(this.value)">'
+    + '<button class="btn btn-grad" onclick="abrirModal(\'anotaciones\')">+ Nueva anotación</button></div>';
+
+  let lista = db.anotaciones;
+  if(buscaNota) lista = lista.filter(n => ((n.titulo||"")+" "+(n.texto||"")+" "+(n.autor||"")).toLowerCase().includes(buscaNota));
+  if(lista.length===0){
+    return h + '<div class="glass tbl-card"><div class="empty">'+(db.anotaciones.length===0
+      ? 'Todavía no hay anotaciones. Usá <b>+ Nueva anotación</b> para escribir lo que quieras — queda compartido con todos.'
+      : 'Nada coincide con "'+esc(buscaNota)+'".')+'</div></div>';
+  }
+  lista = [...lista].sort((a,b)=>{
+    if(!!b.fijada !== !!a.fijada) return b.fijada ? 1 : -1;
+    return (b.actualizado||"").localeCompare(a.actualizado||"");
+  });
+
+  h += '<div class="notas-grid">';
+  for(const n of lista){
+    h += '<div class="nota'+(n.fijada?" nota-fijada":"")+'">'
+      + (n.titulo ? '<h4>'+esc(n.titulo)+'</h4>' : '')
+      + '<div class="nota-txt">'+esc(n.texto||"")+'</div>'
+      + '<div class="nota-pie">'
+      + (n.autor ? esc(n.autor)+' · ' : '') + fmtFecha(n.actualizado)
+      + '<span class="acc">'
+      + '<button class="btn-edit" title="'+(n.fijada?'Quitar de fijadas':'Fijar arriba')+'" onclick="fijarNota(\''+n.id+'\')">'+(n.fijada?'📌':'📍')+'</button>'
+      + '<button class="btn-edit" title="Editar" onclick="editarReg(\'anotaciones\',\''+n.id+'\')">✎</button>'
+      + '<button class="btn-danger" title="Eliminar" onclick="eliminarReg(\'anotaciones\',\''+n.id+'\')">🗑</button>'
+      + '</span></div></div>';
+  }
+  h += '</div>';
+  return h;
+}
+
 /* ============ RECORDATORIOS ============ */
 const MESES_REP = {"Mensual":1,"Bimestral":2,"Trimestral":3,"Semestral":6,"Anual":12};
 let filtroRec = "Pendientes";
@@ -1650,6 +1713,7 @@ function render(){
   else if(modulo==="procedimientos") h = renderProcedimientos();
   else if(modulo==="pagos") h = renderPagos();
   else if(modulo==="recordatorios") h = renderRecordatorios();
+  else if(modulo==="anotaciones") h = renderAnotaciones();
   else h = renderTareas();
   document.getElementById("main").innerHTML = h;
 }
@@ -1676,7 +1740,7 @@ function importarJSON(ev){
     try{
       const d = JSON.parse(rd.result);
       if(!d || !Array.isArray(d.vehiculos)) throw new Error("formato");
-      const COLS = ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos","recordatorios"];
+      const COLS = ["registros","remises","refrigerios","alojamientos","tareas","seguimientos","procedimientos","pagos","recordatorios","anotaciones"];
       for(const k of COLS) if(!Array.isArray(d[k])) d[k] = [];
       const combinar = confirm("¿COMBINAR el respaldo con los datos actuales?\n\nAceptar = combinar (agrega lo nuevo, NO borra nada de lo que ya tenés)\nCancelar = reemplazo total");
       if(combinar){
@@ -1769,6 +1833,12 @@ function exportarCSV(){
       filas.push([fmtFecha(r.fecha), r.titulo, r.repetir||"Una vez", r.categoria, r.responsable, r.hecho?"Completado":"Pendiente", r.notas]);
     }
     nombre = "Recordatorios "+f+".csv";
+  }else if(modulo==="anotaciones"){
+    filas = [["Fecha","Título","Anotación","Autor","Fijada"]];
+    for(const n of [...db.anotaciones].sort((a,b)=>(b.actualizado||"").localeCompare(a.actualizado||""))){
+      filas.push([fmtFecha(n.actualizado), n.titulo, n.texto, n.autor, n.fijada?"Sí":""]);
+    }
+    nombre = "Anotaciones "+f+".csv";
   }else{
     filas = [["Estado","Tarea","Detalle","Responsable","Prioridad","Fecha límite","Creada"]];
     for(const t of db.tareas){
