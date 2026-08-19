@@ -159,6 +159,18 @@ tbody tr:hover{background:rgba(0,176,234,.05)}
 .cal-pago:hover{outline:1px solid var(--verde)}
 .cal-usd{background:rgba(0,176,234,.12)}
 .cal-usd b{color:#0077a3}
+.login-wrap{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;padding:20px;background:#fff}
+.login-card{width:100%;max-width:390px;text-align:center;background:rgba(245,247,249,.75);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.8);border-radius:26px;box-shadow:0 20px 70px rgba(0,176,234,.22);padding:40px 34px}
+.login-card img{height:52px;margin-bottom:18px}
+.login-card h2{font-size:1.25rem;font-weight:800;line-height:1.15}
+.login-card h2 span{background:linear-gradient(135deg,var(--cyan),var(--verde));-webkit-background-clip:text;background-clip:text;color:transparent}
+.login-card .sub{font-size:.82rem;color:#6b7280;margin:6px 0 22px}
+.login-card .fld{text-align:left;margin-bottom:14px}
+.login-card .btn{width:100%;justify-content:center;margin-top:8px}
+.login-err{display:none;font-size:.8rem;font-weight:600;color:#d64545;background:rgba(214,69,69,.1);border-radius:12px;padding:9px;margin-bottom:12px}
+.login-pie{font-size:.72rem;color:#9ca3af;margin-top:16px;line-height:1.5}
+.side-salir{background:none;border:none;color:#9ca3af;font:600 .68rem var(--font-telco);cursor:pointer;text-decoration:underline;margin-top:6px}
+.side-salir:hover{color:#d64545}
 #fm_texto{min-height:260px;line-height:1.55}
 .notas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
 .nota{display:flex;flex-direction:column;padding:18px 20px;border-radius:20px;background:rgba(255,255,255,.65);backdrop-filter:blur(10px);border:1px solid rgba(0,176,234,.18);box-shadow:0 6px 26px rgba(0,176,234,.1)}
@@ -221,6 +233,19 @@ tbody tr:hover{background:rgba(0,176,234,.05)}
   <path fill="url(#g2)" opacity=".13" d="M420,90Q520,160,500,300T360,500Q220,560,140,460T80,250Q120,120,250,80T420,90Z"/>
 </svg>
 
+<div class="login-wrap" id="login">
+  <div class="login-card">
+    <img id="logoLogin" alt="TelCo" src="">
+    <h2>Gestión de <span>Bienes de Uso</span></h2>
+    <p class="sub">Ingresá para usar la planilla en este dispositivo</p>
+    <div class="login-err" id="lgError"></div>
+    <div class="fld"><label>Usuario</label><input id="lgUser" autocomplete="username" onkeydown="if(event.key==='Enter')hacerLogin()"></div>
+    <div class="fld"><label>Contraseña</label><input id="lgPass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')hacerLogin()"></div>
+    <button class="btn btn-grad" onclick="hacerLogin()">Entrar</button>
+    <p class="login-pie">Se pide una sola vez por dispositivo.<br>Dr. R. Carrillo 444 - IOSCor · info@telco.com.ar</p>
+  </div>
+</div>
+
 <button id="menuBtn" onclick="toggleMenu()">☰</button>
 <div class="scrim" id="scrim" onclick="toggleMenu(false)"></div>
 
@@ -267,7 +292,7 @@ tbody tr:hover{background:rgba(0,176,234,.05)}
     <button class="side-item" data-mod="anotaciones" onclick="irModulo('anotaciones')">
       <span class="ico">📝</span><span>Anotaciones<small>Notas libres</small></span>
     </button>
-    <div class="side-foot"><div id="syncEstado" style="margin-bottom:6px;font-weight:700">☁ Conectando…</div>Dr. R. Carrillo 444 - IOSCor - 5° Piso<br>0810-555-8352 · info@telco.com.ar</div>
+    <div class="side-foot"><div id="syncEstado" style="margin-bottom:6px;font-weight:700">☁ Conectando…</div>Dr. R. Carrillo 444 - IOSCor - 5° Piso<br>0810-555-8352 · info@telco.com.ar<br><button class="side-salir" onclick="cerrarSesion()">Cerrar sesión en este dispositivo</button></div>
   </aside>
 
   <div class="content">
@@ -1851,9 +1876,51 @@ function exportarCSV(){
   toast("✓ CSV exportado (se abre con Excel)");
 }
 
+/* ============ Ingreso (una vez por dispositivo) ============ */
+const LS_SESION = "telco_sesion_v1";
+const U_HASH = "4272262816", P_HASH = "3895701371";
+function hashTxt(s){
+  let h = 5381;
+  for(let i=0;i<s.length;i++){ h = ((h<<5)+h) + s.charCodeAt(i); h = h|0; }
+  return String(h>>>0);
+}
+function sesionActiva(){
+  try{ return localStorage.getItem(LS_SESION)==="1"; }catch(e){ return false; }
+}
+function hacerLogin(){
+  const u = (document.getElementById("lgUser").value||"").trim().toLowerCase();
+  const p = document.getElementById("lgPass").value||"";
+  if(hashTxt(u)===U_HASH && hashTxt(p)===P_HASH){
+    try{ localStorage.setItem(LS_SESION,"1"); }catch(e){}
+    document.getElementById("login").style.display = "none";
+    iniciarApp();
+  }else{
+    const er = document.getElementById("lgError");
+    er.textContent = "Usuario o contraseña incorrectos";
+    er.style.display = "block";
+    document.getElementById("lgPass").value = "";
+    document.getElementById("lgPass").focus();
+  }
+}
+function cerrarSesion(){
+  if(!confirm("¿Cerrar sesión en este dispositivo?\n\nLa próxima vez se va a pedir usuario y contraseña.\nLos datos no se borran: están en la nube.")) return;
+  try{ localStorage.removeItem(LS_SESION); }catch(e){}
+  location.reload();
+}
+function iniciarApp(){
+  document.querySelector(".layout").style.display = "flex";
+  render();
+  nubeCargar();
+}
+function mostrarLogin(){
+  document.querySelector(".layout").style.display = "none";
+  document.getElementById("logoLogin").src = "data:image/png;base64," + LOGO_B64;
+  document.getElementById("login").style.display = "flex";
+  setTimeout(()=>{ const i=document.getElementById("lgUser"); if(i) i.focus(); }, 120);
+}
+
 /* ============ Inicio ============ */
-render();
-nubeCargar();
+if(sesionActiva()) iniciarApp(); else mostrarLogin();
 </script>
 </body>
 </html>
