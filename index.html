@@ -172,13 +172,16 @@ tbody tr:hover{background:rgba(0,176,234,.05)}
 .side-salir{background:none;border:none;color:#9ca3af;font:600 .68rem var(--font-telco);cursor:pointer;text-decoration:underline;margin-top:6px}
 .side-salir:hover{color:#d64545}
 #fm_texto{min-height:260px;line-height:1.55}
-.notas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
-.nota{display:flex;flex-direction:column;padding:18px 20px;border-radius:20px;background:rgba(255,255,255,.65);backdrop-filter:blur(10px);border:1px solid rgba(0,176,234,.18);box-shadow:0 6px 26px rgba(0,176,234,.1)}
+.notas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px;align-items:start}
+.nota{display:flex;flex-direction:column;padding:13px 15px;border-radius:16px;background:rgba(255,255,255,.65);backdrop-filter:blur(10px);border:1px solid rgba(0,176,234,.18);box-shadow:0 4px 18px rgba(0,176,234,.08)}
 .nota-fijada{border-color:rgba(204,212,0,.8);background:rgba(204,212,0,.09)}
-.nota h4{font-size:.98rem;font-weight:700;margin-bottom:6px}
-.nota-txt{white-space:pre-wrap;word-break:break-word;font-size:.87rem;line-height:1.55;flex:1;margin-bottom:12px}
-.nota-pie{display:flex;align-items:center;gap:6px;font-size:.72rem;color:#9ca3af;border-top:1px solid rgba(47,47,47,.07);padding-top:9px}
-.nota-pie .acc{margin-left:auto;display:flex;gap:2px}
+.nota h4{font-size:.87rem;font-weight:700;margin-bottom:4px;line-height:1.25}
+.nota-txt{white-space:pre-wrap;word-break:break-word;font-size:.79rem;line-height:1.45;margin-bottom:8px;cursor:pointer}
+.nota-corta{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.nota-mas{background:none;border:none;color:var(--cyan);font:600 .7rem var(--font-telco);cursor:pointer;padding:0 0 8px;text-align:left}
+.nota-pie{display:flex;align-items:center;gap:5px;font-size:.66rem;color:#9ca3af;border-top:1px solid rgba(47,47,47,.07);padding-top:7px;margin-top:auto}
+.nota-pie .acc{margin-left:auto;display:flex;gap:0}
+.nota-pie .acc button{font-size:.8rem;padding:2px 3px}
 .cal-tarde{box-shadow:inset 3px 0 0 #d64545}
 .cal-vto{background:rgba(214,69,69,.1)}
 .cal-vto b{color:#d64545}
@@ -1305,7 +1308,13 @@ function renderSeguimientos(){
 
 /* ============ ANOTACIONES (notas libres) ============ */
 let buscaNota = "";
+let notasAbiertas = {};
 function setBuscaNota(v){ buscaNota = String(v).toLowerCase(); render(); }
+function toggleNota(id){
+  if(notasAbiertas[id]) delete notasAbiertas[id]; else notasAbiertas[id] = true;
+  render();
+}
+const notaLarga = t => (String(t||"").length > 130) || (String(t||"").split("\n").length > 3);
 function fijarNota(id){
   const n = db.anotaciones.find(x=>x.id===id);
   if(n){ n.fijada = !n.fijada; persistir(); render(); toast(n.fijada ? "📌 Anotación fijada" : "Anotación liberada"); }
@@ -1329,9 +1338,11 @@ function renderAnotaciones(){
 
   h += '<div class="notas-grid">';
   for(const n of lista){
+    const abierta = !!notasAbiertas[n.id], larga = notaLarga(n.texto);
     h += '<div class="nota'+(n.fijada?" nota-fijada":"")+'">'
       + (n.titulo ? '<h4>'+esc(n.titulo)+'</h4>' : '')
-      + '<div class="nota-txt">'+esc(n.texto||"")+'</div>'
+      + '<div class="nota-txt'+((larga && !abierta)?" nota-corta":"")+'" title="'+(larga?'Click para ver todo':'')+'" onclick="toggleNota(\''+n.id+'\')">'+esc(n.texto||"")+'</div>'
+      + (larga ? '<button class="nota-mas" onclick="toggleNota(\''+n.id+'\')">'+(abierta?'▴ Ver menos':'▾ Ver todo')+'</button>' : '')
       + '<div class="nota-pie">'
       + (n.autor ? esc(n.autor)+' · ' : '') + fmtFecha(n.actualizado)
       + '<span class="acc">'
